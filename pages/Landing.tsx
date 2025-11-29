@@ -1,12 +1,20 @@
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { ShieldCheck, Zap, MessageSquare, Users, MapPin, Bell, Clock, BarChart3, MessageCircle, Menu, X, Lock, CreditCard, CheckCircle } from 'lucide-react';
+import { ShieldCheck, Zap, MessageSquare, Users, MapPin, Bell, Clock, BarChart3, MessageCircle, Menu, X, Lock, CreditCard, Smartphone, Download } from 'lucide-react';
 import { Button } from '../components/UI';
 
 const Landing: React.FC = () => {
   const navigate = useNavigate();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+
+  // Lógica para pular a Landing Page se estiver rodando dentro do App (Capacitor)
+  useEffect(() => {
+    const isApp = (window as any).Capacitor?.isNativePlatform();
+    if (isApp) {
+      navigate('/login');
+    }
+  }, [navigate]);
 
   const handleLogin = () => navigate('/login');
 
@@ -179,6 +187,51 @@ const Landing: React.FC = () => {
               </div>
             ))}
           </div>
+        </div>
+      </section>
+
+      {/* ---- ANÚNCIO DO APP ANDROID (NOVA SEÇÃO) ---- */}
+      <section className="py-12 bg-gradient-to-r from-[#0d1410] to-[#0a0a0a] border-y border-atalaia-neon/20">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+            <div className="flex flex-col md:flex-row items-center justify-between gap-8">
+                <div className="flex-1">
+                    <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-atalaia-neon/10 border border-atalaia-neon/30 text-atalaia-neon text-xs font-bold uppercase tracking-wider mb-4">
+                        <Smartphone size={14} /> Novo Aplicativo
+                    </div>
+                    <h2 className="text-3xl md:text-4xl font-bold text-white mb-4">
+                        Leve a segurança no seu bolso.
+                    </h2>
+                    <p className="text-gray-400 text-lg mb-6 max-w-xl">
+                        Baixe agora o aplicativo oficial do <strong>Atalaia</strong> para Android. 
+                        Acesso rápido ao botão de pânico, notificações push e monitoramento em tempo real sem abrir o navegador.
+                    </p>
+                    <div className="flex flex-wrap gap-4">
+                        <button 
+                            className="flex items-center gap-3 bg-white text-black px-6 py-3 rounded-lg font-bold hover:bg-gray-200 transition-colors shadow-[0_0_20px_rgba(255,255,255,0.2)]"
+                            onClick={() => alert('O download do APK estará disponível após o build do projeto!')}
+                        >
+                            <Download size={20} />
+                            <span>Baixar APK Android</span>
+                        </button>
+                    </div>
+                </div>
+                
+                {/* Visual Mockup */}
+                <div className="relative w-full max-w-sm md:w-1/3 aspect-[9/16] bg-black border-4 border-gray-800 rounded-[2.5rem] shadow-2xl overflow-hidden flex items-center justify-center">
+                    <div className="absolute top-0 left-1/2 -translate-x-1/2 w-1/3 h-6 bg-black rounded-b-2xl z-20"></div>
+                    <div className="absolute inset-0 bg-[#111] flex flex-col items-center justify-center z-10 p-6 text-center">
+                         <ShieldCheck className="text-atalaia-neon mb-4" size={64} />
+                         <h3 className="text-2xl font-bold text-white mb-2">ATALAIA</h3>
+                         <p className="text-gray-500 text-sm">App Mobile</p>
+                         <div className="mt-8 w-full space-y-3">
+                             <div className="h-10 w-full bg-atalaia-neon rounded-lg opacity-20"></div>
+                             <div className="h-10 w-full bg-gray-800 rounded-lg"></div>
+                         </div>
+                    </div>
+                    {/* Glow effect behind phone */}
+                    <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-full h-full bg-atalaia-neon/20 blur-[80px] -z-10 pointer-events-none"></div>
+                </div>
+            </div>
         </div>
       </section>
 

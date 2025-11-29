@@ -24,12 +24,16 @@ export interface User {
   state?: string;
   phone?: string;
   photoUrl?: string;
+  // Payment Config (Integrator)
+  mpPublicKey?: string;
+  mpAccessToken?: string;
 }
 
 export interface Neighborhood {
   id: string;
   name: string;
-  iframeUrl: string;
+  iframeUrl: string; // Legacy/Display name for logic
+  cameraUrl?: string; // Database column name mapping
   lat?: number;
   lng?: number;
 }

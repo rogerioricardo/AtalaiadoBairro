@@ -1,7 +1,8 @@
 
+
 import { supabase } from '../lib/supabaseClient';
 
-const MP_ACCESS_TOKEN = 'APP_USR-2402733175170598-110815-ab4eb9842f819545d66055ec031c9554-2581348917';
+const SYSTEM_MP_ACCESS_TOKEN = 'APP_USR-2402733175170598-110815-ab4eb9842f819545d66055ec031c9554-2581348917';
 
 export const PaymentService = {
   createPreference: async (planId: string, userEmail: string, userName: string) => {
@@ -43,7 +44,7 @@ export const PaymentService = {
       const response = await fetch('https://api.mercadopago.com/checkout/preferences', {
         method: 'POST',
         headers: {
-          'Authorization': `Bearer ${MP_ACCESS_TOKEN}`,
+          'Authorization': `Bearer ${SYSTEM_MP_ACCESS_TOKEN}`,
           'Content-Type': 'application/json'
         },
         body: JSON.stringify(preferenceData)
@@ -60,9 +61,56 @@ export const PaymentService = {
     } catch (error) {
       console.error('Erro ao conectar com Mercado Pago:', error);
       // FALLBACK PARA DEMONSTRAÇÃO (Caso CORS bloqueie no navegador)
-      // Em produção, isso deve ser feito via Backend/Edge Function
       console.warn("Usando fallback de demonstração devido a bloqueio de CORS no navegador.");
       return `https://www.mercadopago.com.br/checkout/v1/redirect?pref_id=TEST-${Date.now()}`; 
     }
+  },
+
+  createDonationPreference: async (amount: number, userEmail: string, userName: string, targetAccessToken: string) => {
+      const preferenceData = {
+          items: [
+              {
+                  title: 'Doação para Segurança Comunitária',
+                  description: 'Contribuição voluntária para manutenção do sistema de monitoramento.',
+                  quantity: 1,
+                  currency_id: 'BRL',
+                  unit_price: amount
+              }
+          ],
+          payer: {
+              email: userEmail,
+              name: userName
+          },
+          back_urls: {
+              success: `${window.location.origin}/#/dashboard`,
+              failure: `${window.location.origin}/#/dashboard`,
+              pending: `${window.location.origin}/#/dashboard`
+          },
+          auto_return: 'approved'
+      };
+
+      try {
+          const response = await fetch('https://api.mercadopago.com/checkout/preferences', {
+              method: 'POST',
+              headers: {
+                  'Authorization': `Bearer ${targetAccessToken}`, // Usa o token do Integrador
+                  'Content-Type': 'application/json'
+              },
+              body: JSON.stringify(preferenceData)
+          });
+
+          if (!response.ok) {
+              const errorData = await response.json();
+              console.error('Erro MP Doação:', errorData);
+              throw new Error('Falha ao gerar doação');
+          }
+
+          const data = await response.json();
+          return data.init_point;
+      } catch (error) {
+          console.error('Erro ao conectar com Mercado Pago (Doação):', error);
+          // Fallback para teste
+          return `https://www.mercadopago.com.br/checkout/v1/redirect?pref_id=TEST-DONATION-${Date.now()}`;
+      }
   }
 };

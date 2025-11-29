@@ -1,4 +1,5 @@
 
+
 import { supabase } from '../lib/supabaseClient';
 import { Neighborhood, Alert, CameraProtocol, ChatMessage, UserRole, User, Notification, Plan } from '../types';
 
@@ -19,7 +20,9 @@ const mapProfileToUser = (profile: any): User => ({
   phone: profile.phone,
   photoUrl: profile.photo_url,
   lat: profile.lat,
-  lng: profile.lng
+  lng: profile.lng,
+  mpPublicKey: profile.mp_public_key,
+  mpAccessToken: profile.mp_access_token
 });
 
 // Helper to sanitize UUIDs for database calls
@@ -353,5 +356,31 @@ export const MockService = {
   updateUserPlan: async (userId: string, planId: string): Promise<void> => {
       const { error } = await supabase.from('profiles').update({ plan: planId }).eq('id', userId);
       if (error) throw error;
+  },
+
+  // --- INTEGRATOR CONFIG ---
+  updateIntegratorConfig: async (userId: string, publicKey: string, accessToken: string): Promise<void> => {
+      const { error } = await supabase
+          .from('profiles')
+          .update({ mp_public_key: publicKey, mp_access_token: accessToken })
+          .eq('id', userId);
+      
+      if (error) throw error;
+  },
+
+  getNeighborhoodIntegrator: async (neighborhoodId: string): Promise<User | null> => {
+      const safeId = sanitizeUUID(neighborhoodId);
+      if (!safeId) return null;
+
+      const { data, error } = await supabase
+          .from('profiles')
+          .select('*')
+          .eq('neighborhood_id', safeId)
+          .eq('role', 'INTEGRATOR')
+          .limit(1)
+          .maybeSingle(); // Pega o primeiro integrador encontrado
+
+      if (error || !data) return null;
+      return mapProfileToUser(data);
   }
 };
