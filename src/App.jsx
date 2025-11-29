@@ -2,7 +2,7 @@ export default function App() {
   return (
     <div>
       <h1>Projeto Atalaia</h1>
-      <p>Base Vite React pronta para receber seu código.</p>
+      <p>Base Vite React completa.</p>
     </div>
   )
 }
