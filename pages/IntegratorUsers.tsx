@@ -5,7 +5,7 @@ import { useAuth } from '../context/AuthContext';
 import { User, UserRole } from '../types';
 import { MockService } from '../services/mockService';
 import { Card, Button, Input, Modal, Badge } from '../components/UI';
-import { UserPlus, Trash2, Mail, Phone, MapPin, Users, Search, Lock, CreditCard, Save, Key, Crown, ArrowUpCircle, ArrowDownCircle } from 'lucide-react';
+import { UserPlus, Trash2, Mail, Phone, MapPin, Users, Search, Lock, CreditCard, Save, Key, Crown, ArrowUpCircle, ArrowDownCircle, CheckCircle } from 'lucide-react';
 
 const IntegratorUsers: React.FC = () => {
   const { user, updateProfile } = useAuth();
@@ -24,6 +24,7 @@ const IntegratorUsers: React.FC = () => {
   const [mpPublicKey, setMpPublicKey] = useState('');
   const [mpAccessToken, setMpAccessToken] = useState('');
   const [savingConfig, setSavingConfig] = useState(false);
+  const [configSuccess, setConfigSuccess] = useState(false);
 
   const fetchResidents = async () => {
     setLoading(true);
@@ -41,7 +42,7 @@ const IntegratorUsers: React.FC = () => {
     if (user?.role === UserRole.INTEGRATOR || user?.role === UserRole.ADMIN) {
         fetchResidents();
         if (user.role === UserRole.INTEGRATOR) {
-            // Load current config
+            // Load current config from user context
             setMpPublicKey(user.mpPublicKey || '');
             setMpAccessToken(user.mpAccessToken || '');
         }
@@ -101,11 +102,19 @@ const IntegratorUsers: React.FC = () => {
       e.preventDefault();
       if (!user) return;
       setSavingConfig(true);
+      setConfigSuccess(false);
+
       try {
-          await MockService.updateIntegratorConfig(user.id, mpPublicKey, mpAccessToken);
-          // Update context locally
-          await updateProfile({ mpPublicKey, mpAccessToken });
-          alert('Configurações de pagamento salvas com sucesso! Agora você pode receber doações.');
+          // Usa updateProfile do contexto que já trata o banco de dados e o estado local
+          await updateProfile({ 
+              mpPublicKey, 
+              mpAccessToken 
+          });
+          
+          setConfigSuccess(true);
+          alert('✅ Configurações salvas e ativas! Agora você já pode receber doações.');
+          
+          setTimeout(() => setConfigSuccess(false), 5000);
       } catch (e: any) {
           alert('Erro ao salvar configurações: ' + e.message);
       } finally {
@@ -157,7 +166,13 @@ const IntegratorUsers: React.FC = () => {
                         onChange={e => setMpAccessToken(e.target.value)}
                         type="password"
                     />
-                    <div className="md:col-span-2 flex justify-end">
+                    <div className="md:col-span-2 flex justify-end items-center gap-4">
+                        {configSuccess && (
+                            <div className="flex items-center gap-2 text-green-500 animate-in fade-in">
+                                <CheckCircle size={18} />
+                                <span className="font-bold text-sm">Credenciais salvas com sucesso!</span>
+                            </div>
+                        )}
                         <Button type="submit" disabled={savingConfig}>
                             <Save size={18} className="mr-2" />
                             {savingConfig ? 'Salvando...' : 'Salvar Configurações'}

@@ -206,13 +206,14 @@ const Landing: React.FC = () => {
                         Acesso rápido ao botão de pânico, notificações push e monitoramento em tempo real sem abrir o navegador.
                     </p>
                     <div className="flex flex-wrap gap-4">
-                        <button 
+                        <a 
+                            href="/atalaia.apk"
+                            download="Atalaia-App.apk"
                             className="flex items-center gap-3 bg-white text-black px-6 py-3 rounded-lg font-bold hover:bg-gray-200 transition-colors shadow-[0_0_20px_rgba(255,255,255,0.2)]"
-                            onClick={() => alert('O download do APK estará disponível após o build do projeto!')}
                         >
                             <Download size={20} />
                             <span>Baixar APK Android</span>
-                        </button>
+                        </a>
                     </div>
                 </div>
                 

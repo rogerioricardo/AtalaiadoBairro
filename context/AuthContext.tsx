@@ -32,7 +32,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       phone: profile.phone,
       photoUrl: profile.photo_url,
       lat: profile.lat,
-      lng: profile.lng
+      lng: profile.lng,
+      mpPublicKey: profile.mp_public_key,
+      mpAccessToken: profile.mp_access_token
   });
 
   const fetchProfile = async (userId: string, email: string) => {
@@ -71,6 +73,11 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   };
 
   useEffect(() => {
+    // Timeout de segurança para não travar o loading
+    const safetyTimeout = setTimeout(() => {
+        if (loading) setLoading(false);
+    }, 5000);
+
     const initAuth = async () => {
         try {
             const { data: { session } } = await supabase.auth.getSession();
@@ -115,7 +122,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       setLoading(false);
     });
 
-    return () => subscription.unsubscribe();
+    return () => {
+        subscription.unsubscribe();
+        clearTimeout(safetyTimeout);
+    };
   }, []);
 
   const login = async (email: string, password: string) => {
@@ -126,7 +136,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
         if (data.user) {
             // LOGIN IMEDIATO (OPTIMISTIC)
-            // Não esperamos o banco de dados responder o perfil. Entramos na hora.
             setUser({
                 id: data.user.id,
                 email: data.user.email!,
@@ -168,7 +177,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const updateProfile = async (data: Partial<User>) => {
     if (!user) return;
     
-    const dbUpdates = {
+    // Mapeamento correto para as colunas do banco de dados (snake_case)
+    const dbUpdates: any = {
         name: data.name,
         address: data.address,
         city: data.city,
@@ -176,12 +186,19 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         phone: data.phone,
         photo_url: data.photoUrl,
         lat: data.lat,
-        lng: data.lng
+        lng: data.lng,
+        // CORREÇÃO: Incluindo as chaves do Mercado Pago na atualização
+        mp_public_key: data.mpPublicKey,
+        mp_access_token: data.mpAccessToken
     };
+
+    // Remove chaves undefined para não apagar dados existentes acidentalmente
+    Object.keys(dbUpdates).forEach(key => dbUpdates[key] === undefined && delete dbUpdates[key]);
 
     const { error } = await supabase.from('profiles').update(dbUpdates).eq('id', user.id);
     if (error) throw error;
     
+    // Atualiza estado local
     setUser({ ...user, ...data });
   };
 
