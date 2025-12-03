@@ -1,12 +1,12 @@
 
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useRef } from 'react';
 import Layout from '../components/Layout';
 import { useAuth } from '../context/AuthContext';
-import { UserRole, Neighborhood, CameraProtocol, Plan } from '../types';
+import { UserRole, Neighborhood, CameraProtocol, Plan, Camera } from '../types';
 import { MockService } from '../services/mockService';
 import { PaymentService } from '../services/paymentService';
 import { Card, Button, Input, Modal, Badge } from '../components/UI';
-import { Video, Plus, Code, Eye, Lock, Check, MousePointerClick, Send, MapPin, Search, Trash2, AlertTriangle, Settings, List, ShieldCheck, Info, ChevronDown } from 'lucide-react';
+import { Video, Plus, Code, Eye, Lock, Check, MousePointerClick, Send, MapPin, Search, Trash2, AlertTriangle, Settings, List, ShieldCheck, Info, ChevronDown, Camera as CameraIcon, Maximize2, Minimize2, Edit2, X } from 'lucide-react';
 
 const Cameras: React.FC = () => {
   const { user } = useAuth();
@@ -15,17 +15,29 @@ const Cameras: React.FC = () => {
   // Data State
   const [neighborhoods, setNeighborhoods] = useState<Neighborhood[]>([]);
   const [selectedNeighborhood, setSelectedNeighborhood] = useState<Neighborhood | null>(null);
+  
+  // Multiple Cameras State
+  const [cameras, setCameras] = useState<Camera[]>([]);
+  
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [plans, setPlans] = useState<Plan[]>([]);
   
   // Search State
   const [searchTerm, setSearchTerm] = useState('');
 
-  // Form State
+  // Form State (New Neighborhood)
+  const [editingId, setEditingId] = useState<string | null>(null);
   const [newHoodName, setNewHoodName] = useState('');
-  const [newHoodIframe, setNewHoodIframe] = useState(''); // Stores raw HTML or URL
-  const [newHoodLat, setNewHoodLat] = useState('');
-  const [newHoodLng, setNewHoodLng] = useState('');
+  const [newHoodDesc, setNewHoodDesc] = useState(''); 
+
+  // Form State (New/Edit Camera)
+  const [selectedManageHoodId, setSelectedManageHoodId] = useState('');
+  const [newCameraName, setNewCameraName] = useState('');
+  const [newCameraCode, setNewCameraCode] = useState('');
+  const [newCameraLat, setNewCameraLat] = useState('');
+  const [newCameraLng, setNewCameraLng] = useState('');
+  const [addingCamera, setAddingCamera] = useState(false);
+  const [editingCameraId, setEditingCameraId] = useState<string | null>(null);
 
   // Protocol State
   const [protocolCameraName, setProtocolCameraName] = useState('');
@@ -50,73 +62,177 @@ const Cameras: React.FC = () => {
         const hood = await MockService.getNeighborhoodById(user.neighborhoodId);
         if (hood) {
             setNeighborhoods([hood]);
-            setSelectedNeighborhood(hood);
+            setSelectedNeighborhood(hood); // Auto-select for resident
         }
       }
     };
     loadData();
-  }, [user, activeTab]); // Reload when tab changes
+  }, [user, activeTab]); 
 
-  // Helper to extract SRC from iframe code
-  const extractSrcFromIframe = (input: string): string => {
-      // If it contains <iframe, try to find src="..."
-      if (input.includes('<iframe')) {
-          const srcMatch = input.match(/src=["'](.*?)["']/);
-          if (srcMatch && srcMatch[1]) {
-              return srcMatch[1];
+  // Load cameras when a neighborhood is selected
+  useEffect(() => {
+      const loadCameras = async () => {
+          if (selectedNeighborhood) {
+              const extraCameras = await MockService.getAdditionalCameras(selectedNeighborhood.id);
+              setCameras(extraCameras);
+          } else if (selectedManageHoodId && activeTab === 'manage') {
+              // Load cameras for management list
+              const extraCameras = await MockService.getAdditionalCameras(selectedManageHoodId);
+              setCameras(extraCameras);
+          } else {
+              setCameras([]);
           }
-      }
-      // If no iframe tag or no match, assume it's just a URL
-      return input.trim();
-  };
+      };
+      
+      // Reset camera edit form if changing hood
+      handleCancelCameraEdit();
+      
+      loadCameras();
+  }, [selectedNeighborhood, selectedManageHoodId, activeTab]);
 
   const handleCreateNeighborhood = async (e: React.FormEvent) => {
     e.preventDefault();
-    const lat = newHoodLat ? parseFloat(newHoodLat) : undefined;
-    const lng = newHoodLng ? parseFloat(newHoodLng) : undefined;
-    
-    // Extract clean URL from the pasted code
-    const cleanUrl = extractSrcFromIframe(newHoodIframe);
+    const description = newHoodDesc.trim();
 
     try {
-        await MockService.createNeighborhood(newHoodName, cleanUrl, lat, lng);
+        if (editingId) {
+            await MockService.updateNeighborhood(editingId, newHoodName, description);
+            alert('Bairro atualizado com sucesso!');
+            setEditingId(null);
+        } else {
+            await MockService.createNeighborhood(newHoodName, description);
+            alert('Bairro cadastrado com sucesso!');
+        }
+
         const hoods = await MockService.getNeighborhoods(true);
         setNeighborhoods(hoods);
         
         // Reset form
         setNewHoodName('');
-        setNewHoodIframe('');
-        setNewHoodLat('');
-        setNewHoodLng('');
+        setNewHoodDesc('');
         
-        alert('Bairro cadastrado com sucesso!');
     } catch (error: any) {
-        alert('Erro ao criar bairro: ' + error.message);
+        alert('Erro ao salvar bairro: ' + error.message);
     }
   };
 
-  const handleDeleteNeighborhood = async (id: string, name: string) => {
-      // Confirmação dupla para segurança
+  const handleEditNeighborhood = (hood: Neighborhood, e: React.MouseEvent) => {
+      e.stopPropagation();
+      setEditingId(hood.id);
+      setNewHoodName(hood.name);
+      setNewHoodDesc(hood.description || '');
+      // Scroll to top to see form
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
+
+  const handleCancelEdit = () => {
+      setEditingId(null);
+      setNewHoodName('');
+      setNewHoodDesc('');
+  };
+
+  // --- CAMERA MANAGEMENT LOGIC ---
+
+  const handleSaveCamera = async (e: React.FormEvent) => {
+      e.preventDefault();
+      if (!selectedManageHoodId) return;
+      setAddingCamera(true);
+
+      const lat = newCameraLat ? parseFloat(newCameraLat) : undefined;
+      const lng = newCameraLng ? parseFloat(newCameraLng) : undefined;
+
+      try {
+          if (editingCameraId) {
+              await MockService.updateCamera(editingCameraId, newCameraName, newCameraCode, lat, lng);
+              alert('Câmera atualizada com sucesso!');
+          } else {
+              await MockService.addCamera(selectedManageHoodId, newCameraName, newCameraCode, lat, lng);
+              alert('Câmera adicionada com sucesso!');
+          }
+          
+          const updatedCameras = await MockService.getAdditionalCameras(selectedManageHoodId);
+          setCameras(updatedCameras);
+          
+          handleCancelCameraEdit();
+
+      } catch (e: any) {
+          alert('Erro ao salvar câmera: ' + e.message);
+      } finally {
+          setAddingCamera(false);
+      }
+  };
+
+  const handleEditCamera = (cam: Camera) => {
+      setEditingCameraId(cam.id);
+      setNewCameraName(cam.name);
+      setNewCameraCode(cam.iframeCode);
+      setNewCameraLat(cam.lat?.toString() || '');
+      setNewCameraLng(cam.lng?.toString() || '');
+      
+      // Scroll to form if needed
+      const formEl = document.getElementById('camera-form');
+      if(formEl) formEl.scrollIntoView({ behavior: 'smooth' });
+  };
+
+  const handleCancelCameraEdit = () => {
+      setEditingCameraId(null);
+      setNewCameraName('');
+      setNewCameraCode('');
+      setNewCameraLat('');
+      setNewCameraLng('');
+  };
+
+  const handleDeleteCamera = async (id: string) => {
+      if (!window.confirm("Remover esta câmera?")) return;
+      try {
+          await MockService.deleteCamera(id);
+          setCameras(prev => prev.filter(c => c.id !== id));
+          if (editingCameraId === id) handleCancelCameraEdit();
+      } catch(e: any) {
+          alert("Erro ao remover: " + e.message);
+      }
+  };
+
+  const handleResetCameras = async () => {
+      const confirmText = "RESET-CAMERAS";
+      const input = prompt(`ATENÇÃO: ISSO APAGARÁ TODAS AS CÂMERAS DO SISTEMA (Principais e Extras).\nOs bairros serão mantidos, mas ficarão sem vídeo.\n\nPara confirmar, digite "${confirmText}":`);
+      
+      if (input === confirmText) {
+          try {
+              await MockService.resetSystemCameras();
+              const hoods = await MockService.getNeighborhoods(true);
+              setNeighborhoods(hoods);
+              setCameras([]);
+              alert("Sistema de câmeras limpo com sucesso.");
+          } catch (e: any) {
+              alert("Erro ao limpar: " + e.message);
+          }
+      }
+  };
+
+  const handleDeleteNeighborhood = async (id: string, name: string, e: React.MouseEvent) => {
+      e.stopPropagation(); // Previne click no container
+      
       const confirm1 = window.confirm(`ATENÇÃO: Deseja realmente excluir o bairro "${name}"?`);
       if (!confirm1) return;
 
-      const confirm2 = window.confirm(`Isso apagará o histórico de alertas e chats deste bairro. Os moradores ficarão sem vínculo. Confirmar exclusão?`);
+      const confirm2 = window.confirm(`Isso apagará todas as câmeras, alertas, chats e configurações deste bairro. Confirmar exclusão?`);
       if (!confirm2) return;
       
       setDeletingId(id);
       try {
           await MockService.deleteNeighborhood(id);
           
-          // Update local state immediately
-          setNeighborhoods(prev => prev.filter(h => h.id !== id));
+          // Force update local state
+          const newHoods = neighborhoods.filter(h => h.id !== id);
+          setNeighborhoods(newHoods);
           
-          if (selectedNeighborhood?.id === id) {
-              setSelectedNeighborhood(null);
-          }
+          if (selectedNeighborhood?.id === id) setSelectedNeighborhood(null);
+          if (selectedManageHoodId === id) setSelectedManageHoodId('');
+          
           alert('Bairro excluído com sucesso.');
       } catch (error: any) {
-          console.error("Erro na exclusão:", error);
-          alert('Erro ao excluir: ' + (error.message || 'Verifique se rodou o Script SQL de Permissões no Supabase.'));
+          alert('Erro ao excluir: ' + error.message);
       } finally {
           setDeletingId(null);
       }
@@ -125,10 +241,8 @@ const Cameras: React.FC = () => {
   const handleGenerateProtocol = async (e: React.FormEvent) => {
     e.preventDefault();
     if(!protocolCameraName) return;
-    
     const lat = protocolLat ? parseFloat(protocolLat) : undefined;
     const lng = protocolLng ? parseFloat(protocolLng) : undefined;
-
     const protocol = await MockService.generateProtocol(protocolCameraName.toLowerCase(), lat, lng);
     setGeneratedProtocol(protocol);
   };
@@ -148,9 +262,7 @@ const Cameras: React.FC = () => {
       if (!user) return;
       setProcessingUpgrade(planId);
       try {
-          // Gerar checkout Mercado Pago
           const checkoutUrl = await PaymentService.createPreference(planId, user.email, user.name);
-          // Redirecionar
           window.location.href = checkoutUrl;
       } catch (error: any) {
           alert('Erro ao gerar pagamento: ' + error.message);
@@ -162,33 +274,76 @@ const Cameras: React.FC = () => {
   const filteredNeighborhoods = neighborhoods.filter(h => 
       h.name.toLowerCase().includes(searchTerm.toLowerCase())
   );
+  const displayedNeighborhoods = searchTerm ? filteredNeighborhoods : filteredNeighborhoods.slice(0, 4);
 
-  const displayedNeighborhoods = searchTerm 
-      ? filteredNeighborhoods 
-      : filteredNeighborhoods.slice(0, 4);
-
-  // Admin and Integrator always have access, otherwise check plan
-  // Se for Admin, Integrador ou SCR (Motovigia), libera geral. Se for morador, checa se pagou.
   const isLocked = user?.role !== UserRole.ADMIN && 
                    user?.role !== UserRole.INTEGRATOR && 
                    user?.role !== UserRole.SCR && 
                    user?.plan === 'FREE';
 
+  // Enhanced Universal Player that handles Raw HTML & Fullscreen
   const UniversalPlayer = ({ url }: { url: string }) => {
-    // Basic detection for direct video files vs embeds
+    const containerRef = useRef<HTMLDivElement>(null);
+    const [isFullscreen, setIsFullscreen] = useState(false);
+
+    useEffect(() => {
+        const onFullscreenChange = () => {
+            setIsFullscreen(!!document.fullscreenElement);
+        };
+        document.addEventListener('fullscreenchange', onFullscreenChange);
+        return () => document.removeEventListener('fullscreenchange', onFullscreenChange);
+    }, []);
+
+    const toggleFullscreen = async () => {
+        if (!containerRef.current) return;
+
+        try {
+            if (!document.fullscreenElement) {
+                // Entrar em fullscreen
+                await containerRef.current.requestFullscreen();
+                
+                // Tentar travar rotação em landscape no mobile
+                try {
+                    if (screen.orientation && 'lock' in screen.orientation) {
+                        // @ts-ignore - lock method is standard but types might vary
+                        await screen.orientation.lock('landscape');
+                    }
+                } catch (e) {
+                    console.warn("Rotação automática não suportada pelo navegador ou dispositivo.");
+                }
+            } else {
+                // Sair de fullscreen
+                await document.exitFullscreen();
+                // Destravar rotação
+                try {
+                    if (screen.orientation && 'unlock' in screen.orientation) {
+                        screen.orientation.unlock();
+                    }
+                } catch (e) {}
+            }
+        } catch (err) {
+            console.error("Erro ao alternar tela cheia:", err);
+        }
+    };
+
+    if (!url) return null;
+
+    // Detect if input is raw HTML (iframe tag)
+    const isRawHtml = url.trim().startsWith('<iframe') || url.trim().startsWith('<div');
     const isDirectVideo = url.match(/\.(mp4|webm|ogg|m3u8)$/i);
     
     return (
-        <div className="w-full bg-black rounded-xl overflow-hidden border border-atalaia-border relative shadow-[0_0_30px_rgba(0,0,0,0.5)] aspect-video group">
-             {isDirectVideo ? (
-                 <video 
-                    src={url} 
-                    controls 
-                    autoPlay 
-                    muted 
-                    loop 
-                    className="w-full h-full object-cover"
+        <div 
+            ref={containerRef}
+            className={`w-full bg-black overflow-hidden border border-atalaia-border relative shadow-[0_0_30px_rgba(0,0,0,0.5)] aspect-video group ${isFullscreen ? 'flex items-center justify-center' : 'rounded-xl'}`}
+        >
+             {isRawHtml ? (
+                 <div 
+                    className="w-full h-full [&>iframe]:w-full [&>iframe]:h-full [&>iframe]:border-0"
+                    dangerouslySetInnerHTML={{ __html: url }}
                  />
+             ) : isDirectVideo ? (
+                 <video src={url} controls autoPlay muted loop className="w-full h-full object-cover" />
              ) : (
                 <iframe 
                     src={url}
@@ -199,10 +354,26 @@ const Cameras: React.FC = () => {
                     title="Camera Feed"
                 />
              )}
-            
-            <div className="absolute top-4 right-4 bg-red-600 text-white text-xs font-bold px-2 py-1 rounded animate-pulse shadow-lg z-10">
-                AO VIVO
-            </div>
+             
+             {/* Controls Overlay - ICON ONLY, NO TEXT */}
+             <div className="absolute top-0 right-0 p-2 opacity-0 group-hover:opacity-100 transition-opacity flex items-center gap-2 z-50">
+                 {/* Fullscreen Button */}
+                 <button 
+                    onClick={toggleFullscreen}
+                    className="bg-black/70 hover:bg-atalaia-neon hover:text-black text-white p-2 rounded-lg backdrop-blur-sm transition-all shadow-lg"
+                    title={isFullscreen ? "Sair da Tela Cheia" : "Tela Cheia"}
+                 >
+                    {isFullscreen ? <Minimize2 size={20} /> : <Maximize2 size={20} />}
+                 </button>
+             </div>
+
+             {/* Live indicator */}
+             <div className="absolute top-4 left-4 pointer-events-none z-40">
+                 <div className="bg-red-600 text-white text-[10px] font-bold px-2 py-1 rounded animate-pulse shadow-lg flex items-center gap-1">
+                    <div className="w-2 h-2 bg-white rounded-full" />
+                    AO VIVO
+                </div>
+             </div>
         </div>
     );
   };
@@ -285,14 +456,14 @@ const Cameras: React.FC = () => {
                             <MousePointerClick size={20} />
                         </div>
                         <div>
-                            <h4 className="text-white font-bold text-sm">Instrução de Uso</h4>
+                            <h4 className="text-white font-bold text-sm">Central de Câmeras</h4>
                             <p className="text-gray-400 text-xs mt-1 leading-relaxed">
-                                Role o quadro abaixo e escolha a câmera desejada. Clicando no botão, abra a câmera.
+                                Selecione um bairro abaixo para visualizar todas as câmeras disponíveis em tempo real.
                             </p>
                         </div>
                   </div>
 
-                  {/* Grid - VISIBLE TO ALL */}
+                  {/* Neighborhood Selector Grid */}
                   <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4 mb-8">
                       {displayedNeighborhoods.map(hood => (
                           <div 
@@ -310,24 +481,57 @@ const Cameras: React.FC = () => {
                                   <Video size={20} className={selectedNeighborhood?.id === hood.id ? 'text-atalaia-neon' : 'text-gray-400'} />
                                   <h3 className="font-bold truncate text-white">{hood.name}</h3>
                               </div>
-                              <p className="text-xs text-gray-500">Clique para visualizar</p>
+                              <p className="text-xs text-gray-500">
+                                  {selectedNeighborhood?.id === hood.id ? 'Selecionado' : 'Clique para visualizar'}
+                              </p>
                           </div>
                       ))}
                   </div>
 
                   {selectedNeighborhood ? (
                       <div className="animate-in fade-in zoom-in duration-300 mt-4">
-                          <div className="flex items-center justify-between mb-4">
-                              <h2 className="text-xl font-bold flex items-center gap-2 text-white">
-                                  <Video className="text-atalaia-neon" /> {selectedNeighborhood.name}
-                              </h2>
-                              <span className="px-2 py-1 bg-red-600 text-white text-[10px] font-bold rounded uppercase animate-pulse">Ao Vivo</span>
+                          <div className="flex flex-col md:flex-row md:items-center gap-3 mb-6">
+                             <h2 className="text-xl font-bold flex items-center gap-2 text-white">
+                                <Video className="text-atalaia-neon" /> {selectedNeighborhood.name}
+                             </h2>
+                             {selectedNeighborhood.description && (
+                                 <span className="text-sm text-gray-400 bg-gray-900 px-3 py-1 rounded-full border border-gray-800">
+                                     <Info size={12} className="inline mr-1" /> {selectedNeighborhood.description}
+                                 </span>
+                             )}
                           </div>
-                          <UniversalPlayer url={selectedNeighborhood.iframeUrl} />
+                          
+                          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                              {/* Main Camera (Legacy) - Kept for compatibility but optional */}
+                              {selectedNeighborhood.iframeUrl && (
+                                  <div>
+                                      <p className="text-sm font-bold text-gray-400 mb-2 uppercase">Câmera Principal</p>
+                                      <UniversalPlayer url={selectedNeighborhood.iframeUrl} />
+                                  </div>
+                              )}
+
+                              {/* Additional Cameras */}
+                              {cameras.map(cam => (
+                                  <div key={cam.id}>
+                                      <p className="text-sm font-bold text-gray-400 mb-2 uppercase flex justify-between">
+                                          {cam.name}
+                                          {cam.lat && cam.lng && <span className="text-[10px] bg-gray-800 px-1 rounded flex items-center"><MapPin size={8} className="mr-1"/>Localizada</span>}
+                                      </p>
+                                      <UniversalPlayer url={cam.iframeCode} />
+                                  </div>
+                              ))}
+
+                              {/* Placeholder if no cameras */}
+                              {!selectedNeighborhood.iframeUrl && cameras.length === 0 && (
+                                  <div className="col-span-2 h-40 flex items-center justify-center border border-dashed border-gray-800 rounded-xl bg-black/20 text-gray-500">
+                                      Nenhuma câmera configurada para este bairro ainda.
+                                  </div>
+                              )}
+                          </div>
                       </div>
                   ) : (
                       <div className="h-40 flex items-center justify-center border border-dashed border-gray-800 rounded-xl bg-black/20">
-                          <p className="text-gray-500">Selecione uma câmera acima.</p>
+                          <p className="text-gray-500">Selecione um bairro acima para ver as câmeras.</p>
                       </div>
                   )}
                 </>
@@ -335,101 +539,192 @@ const Cameras: React.FC = () => {
           </div>
       )}
 
-      {/* MANAGE MODE (ADMIN - NEW STRUCTURE) */}
+      {/* MANAGE MODE (ADMIN) */}
       {activeTab === 'manage' && user?.role === UserRole.ADMIN && (
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-              {/* Left: Create Form */}
-              <div className="lg:col-span-1">
-                  <Card className="p-6 sticky top-4">
-                      <h2 className="text-lg font-bold mb-4 text-white flex items-center gap-2">
-                          <Plus size={18} className="text-atalaia-neon" /> Novo Bairro
-                      </h2>
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+              {/* Left Column: Create/Edit Neighborhood */}
+              <div className="space-y-6">
+                  <Card className="p-6 border-atalaia-neon/20">
+                      <div className="flex justify-between items-center mb-4">
+                          <h2 className="text-lg font-bold text-white flex items-center gap-2">
+                              {editingId ? <Edit2 size={18} className="text-atalaia-neon" /> : <Plus size={18} className="text-atalaia-neon" />} 
+                              {editingId ? 'Editar Bairro' : 'Novo Bairro'}
+                          </h2>
+                          {editingId && (
+                              <button onClick={handleCancelEdit} className="text-gray-400 hover:text-white flex items-center gap-1 text-xs">
+                                  <X size={14} /> Cancelar
+                              </button>
+                          )}
+                      </div>
+
                       <form onSubmit={handleCreateNeighborhood} className="space-y-4">
                           <Input 
-                            label="Nome" 
+                            label="Nome do Bairro" 
                             value={newHoodName} 
                             onChange={e => setNewHoodName(e.target.value)} 
                             placeholder="Ex: Centro"
                             required
                           />
                           <div>
-                            <label className="text-xs font-medium text-gray-400 mb-1 block uppercase">Código Iframe da Câmera</label>
+                            <label className="text-xs font-medium text-gray-400 mb-1 block uppercase">Informações / Descrição</label>
                             <textarea 
-                                className="w-full bg-black/50 border border-atalaia-border rounded-lg px-3 py-2 text-white text-xs h-32 focus:border-atalaia-neon focus:outline-none resize-none font-mono"
-                                placeholder='<iframe src="https://..."></iframe>'
-                                value={newHoodIframe}
-                                onChange={e => setNewHoodIframe(e.target.value)}
-                                required
+                                className="w-full bg-black/50 border border-atalaia-border rounded-lg px-3 py-2 text-white text-xs h-32 focus:border-atalaia-neon focus:outline-none resize-none"
+                                placeholder='Ex: Rua principal, área residencial, contatos do posto local...'
+                                value={newHoodDesc}
+                                onChange={e => setNewHoodDesc(e.target.value)}
                             />
-                            <p className="text-[10px] text-gray-500 mt-1">Cole o código completo do Iframe ou apenas a URL.</p>
+                            <p className="text-[10px] text-gray-500 mt-1">
+                                {editingId ? 'Altere os dados e salve.' : 'Crie o bairro primeiro, depois adicione as câmeras.'}
+                            </p>
                           </div>
-                          <div className="grid grid-cols-2 gap-2">
-                              <Input label="Lat" value={newHoodLat} onChange={e => setNewHoodLat(e.target.value)} type="number" step="any"/>
-                              <Input label="Lng" value={newHoodLng} onChange={e => setNewHoodLng(e.target.value)} type="number" step="any"/>
-                          </div>
-                          <Button type="submit" className="w-full">Cadastrar</Button>
+                          <Button type="submit" className="w-full" variant={editingId ? 'secondary' : 'primary'}>
+                              {editingId ? 'Atualizar Bairro' : 'Cadastrar Bairro'}
+                          </Button>
                       </form>
+                  </Card>
+
+                   {/* DANGER ZONE - Reset Cameras */}
+                   <div className="bg-red-900/10 border border-red-900/30 p-4 rounded-xl">
+                      <h3 className="text-red-500 font-bold mb-2 flex items-center gap-2">
+                          <AlertTriangle size={18} /> Zona de Perigo
+                      </h3>
+                      <p className="text-xs text-gray-400 mb-3">
+                          Precisa limpar todas as câmeras para recomeçar?
+                      </p>
+                      <button 
+                          onClick={handleResetCameras}
+                          className="text-xs bg-red-900/20 text-red-400 border border-red-900/40 px-3 py-2 rounded hover:bg-red-900/40 transition-colors w-full"
+                      >
+                          Resetar Sistema de Câmeras
+                      </button>
+                  </div>
+
+                  {/* Neighborhood List & Delete */}
+                  <Card className="p-0 overflow-hidden max-h-96 overflow-y-auto">
+                      <div className="p-4 border-b border-white/10 bg-[#151515]">
+                          <h2 className="font-bold text-white flex items-center gap-2">
+                              <List size={18} className="text-atalaia-neon" /> Bairros Existentes
+                          </h2>
+                      </div>
+                      <table className="w-full text-left text-sm text-gray-400">
+                          <tbody className="divide-y divide-white/5">
+                              {neighborhoods.map((hood) => (
+                                  <tr key={hood.id} className={`hover:bg-white/5 ${editingId === hood.id ? 'bg-atalaia-neon/5' : ''}`}>
+                                      <td className="px-4 py-3 font-medium text-white">
+                                          {hood.name}
+                                          {hood.description && <span className="block text-xs text-gray-500 mt-1 truncate max-w-[200px]">{hood.description}</span>}
+                                      </td>
+                                      <td className="px-4 py-3 text-right flex justify-end gap-2">
+                                          <button 
+                                              onClick={(e) => handleEditNeighborhood(hood, e)}
+                                              className="text-blue-500 hover:text-white p-1 rounded hover:bg-blue-500/20"
+                                              title="Editar Bairro"
+                                          >
+                                              <Edit2 size={16} />
+                                          </button>
+                                          <button 
+                                              onClick={(e) => handleDeleteNeighborhood(hood.id, hood.name, e)}
+                                              disabled={deletingId === hood.id}
+                                              className="text-red-500 hover:text-white p-1 rounded hover:bg-red-500/20"
+                                              title="Excluir Bairro Permanentemente"
+                                          >
+                                              {deletingId === hood.id ? '...' : <Trash2 size={16} />}
+                                          </button>
+                                      </td>
+                                  </tr>
+                              ))}
+                          </tbody>
+                      </table>
                   </Card>
               </div>
 
-              {/* Right: Management Table (Better for Deletion) */}
-              <div className="lg:col-span-2">
-                  <Card className="p-0 overflow-hidden">
-                      <div className="p-4 border-b border-white/10 bg-[#151515] flex justify-between items-center">
-                          <h2 className="font-bold text-white flex items-center gap-2">
-                              <List size={18} className="text-atalaia-neon" /> Bairros Cadastrados
-                          </h2>
-                          <span className="text-xs text-gray-500">{neighborhoods.length} registros</span>
+              {/* Right Column: Manage Cameras within Neighborhood */}
+              <div className="space-y-6">
+                  <Card className="p-6">
+                      <h2 className="text-lg font-bold mb-4 text-white flex items-center gap-2">
+                          <CameraIcon size={18} className={editingCameraId ? "text-blue-500" : "text-yellow-500"} /> 
+                          {editingCameraId ? 'Editar Câmera' : 'Adicionar Câmera Extra'}
+                      </h2>
+                      <div className="mb-4">
+                          <label className="text-xs font-medium text-gray-400 mb-1 block uppercase">Selecione o Bairro</label>
+                          <select 
+                              className="w-full bg-black/50 border border-atalaia-border rounded-lg px-4 py-2.5 text-white focus:border-atalaia-neon focus:outline-none"
+                              value={selectedManageHoodId}
+                              onChange={(e) => setSelectedManageHoodId(e.target.value)}
+                          >
+                              <option value="">Selecione...</option>
+                              {neighborhoods.map(h => <option key={h.id} value={h.id}>{h.name}</option>)}
+                          </select>
                       </div>
-                      
-                      <div className="overflow-x-auto">
-                          <table className="w-full text-left text-sm text-gray-400">
-                              <thead className="bg-black text-gray-200 uppercase text-xs">
-                                  <tr>
-                                      <th className="px-6 py-3 font-medium">Nome do Bairro</th>
-                                      <th className="px-6 py-3 font-medium">Câmera</th>
-                                      <th className="px-6 py-3 font-medium text-right">Ações</th>
-                                  </tr>
-                              </thead>
-                              <tbody className="divide-y divide-white/5">
-                                  {neighborhoods.map((hood) => (
-                                      <tr key={hood.id} className="hover:bg-white/5 transition-colors">
-                                          <td className="px-6 py-4 font-medium text-white">{hood.name}</td>
-                                          <td className="px-6 py-4">
-                                              {hood.iframeUrl ? (
-                                                  <span className="text-green-500 text-xs flex items-center gap-1"><Check size={12}/> Configurada</span>
-                                              ) : (
-                                                  <span className="text-red-500 text-xs">Pendente</span>
-                                              )}
-                                          </td>
-                                          <td className="px-6 py-4 text-right">
+
+                      {selectedManageHoodId && (
+                          <div className="animate-in fade-in">
+                              <form id="camera-form" onSubmit={handleSaveCamera} className="space-y-4 border-b border-white/10 pb-6 mb-6">
+                                  <div className="flex justify-between items-center">
+                                      <h4 className="text-xs uppercase font-bold text-gray-500">Dados da Câmera</h4>
+                                      {editingCameraId && (
+                                          <button type="button" onClick={handleCancelCameraEdit} className="text-xs text-gray-400 hover:text-white flex items-center gap-1">
+                                              <X size={12}/> Cancelar
+                                          </button>
+                                      )}
+                                  </div>
+                                  <Input 
+                                      label="Nome da Câmera"
+                                      placeholder="Ex: Portaria Lateral"
+                                      value={newCameraName}
+                                      onChange={e => setNewCameraName(e.target.value)}
+                                      required
+                                  />
+                                  <div className="grid grid-cols-2 gap-2">
+                                      <Input label="Latitude" value={newCameraLat} onChange={e => setNewCameraLat(e.target.value)} type="number" step="any"/>
+                                      <Input label="Longitude" value={newCameraLng} onChange={e => setNewCameraLng(e.target.value)} type="number" step="any"/>
+                                  </div>
+                                  <div>
+                                      <label className="text-xs font-medium text-gray-400 mb-1 block uppercase">Código do Iframe</label>
+                                      <textarea 
+                                          className="w-full bg-black/50 border border-atalaia-border rounded-lg px-3 py-2 text-white text-xs h-24 focus:border-atalaia-neon focus:outline-none resize-none font-mono"
+                                          placeholder='<iframe src="..."></iframe>'
+                                          value={newCameraCode}
+                                          onChange={e => setNewCameraCode(e.target.value)}
+                                          required
+                                      />
+                                  </div>
+                                  <Button type="submit" disabled={addingCamera} className="w-full" variant={editingCameraId ? "primary" : "secondary"}>
+                                      {addingCamera ? 'Salvando...' : (editingCameraId ? 'Atualizar Câmera' : 'Adicionar Câmera')}
+                                  </Button>
+                              </form>
+
+                              {/* List of Cameras in Selected Hood */}
+                              <h3 className="font-bold text-gray-300 text-sm mb-2">Câmeras neste Bairro:</h3>
+                              <div className="space-y-2">
+                                  {cameras.map(cam => (
+                                      <div key={cam.id} className={`flex items-center justify-between bg-black/40 p-3 rounded border ${editingCameraId === cam.id ? 'border-atalaia-neon/50 bg-atalaia-neon/5' : 'border-white/5'}`}>
+                                          <div className="flex items-center gap-2">
+                                              <Video size={14} className="text-gray-500"/>
+                                              <span className="text-sm font-medium text-white">{cam.name}</span>
+                                          </div>
+                                          <div className="flex items-center gap-2">
                                               <button 
-                                                  onClick={() => handleDeleteNeighborhood(hood.id, hood.name)}
-                                                  disabled={deletingId === hood.id}
-                                                  className="inline-flex items-center gap-2 px-3 py-1.5 bg-red-500/10 text-red-500 hover:bg-red-500 hover:text-white rounded-lg transition-all text-xs font-bold border border-red-500/20"
-                                                  title="Excluir Bairro"
+                                                  onClick={() => handleEditCamera(cam)} 
+                                                  className="text-blue-500 hover:text-white text-xs p-1 rounded hover:bg-blue-500/20"
+                                                  title="Editar Câmera"
                                               >
-                                                  {deletingId === hood.id ? (
-                                                      <span className="animate-spin">...</span>
-                                                  ) : (
-                                                      <>
-                                                          <Trash2 size={14} /> EXCLUIR
-                                                      </>
-                                                  )}
+                                                  <Edit2 size={14} />
                                               </button>
-                                          </td>
-                                      </tr>
+                                              <button 
+                                                  onClick={() => handleDeleteCamera(cam.id)} 
+                                                  className="text-red-500 hover:text-white text-xs p-1 rounded hover:bg-red-500/20"
+                                                  title="Remover Câmera"
+                                              >
+                                                  <Trash2 size={14} />
+                                              </button>
+                                          </div>
+                                      </div>
                                   ))}
-                                  {neighborhoods.length === 0 && (
-                                      <tr>
-                                          <td colSpan={3} className="px-6 py-8 text-center text-gray-600 italic">
-                                              Nenhum bairro cadastrado. Utilize o formulário ao lado.
-                                          </td>
-                                      </tr>
-                                  )}
-                              </tbody>
-                          </table>
-                      </div>
+                                  {cameras.length === 0 && <p className="text-xs text-gray-600 italic">Nenhuma câmera extra.</p>}
+                              </div>
+                          </div>
+                      )}
                   </Card>
               </div>
           </div>

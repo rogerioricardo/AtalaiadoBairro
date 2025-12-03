@@ -1,6 +1,7 @@
 
+
 import React, { createContext, useContext, useState, useEffect } from 'react';
-import { User, UserRole } from '../types';
+import { User, UserRole, UserPlan } from '../types';
 import { supabase } from '../lib/supabaseClient';
 
 interface AuthContextType {
@@ -10,6 +11,7 @@ interface AuthContextType {
   updateProfile: (data: Partial<User>) => Promise<void>;
   isAuthenticated: boolean;
   loading: boolean;
+  refreshUser: () => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -24,7 +26,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       name: profile.name || profile.email,
       email: profile.email,
       role: profile.role || UserRole.RESIDENT,
-      plan: profile.plan || 'FREE',
+      plan: (profile.plan as UserPlan) || 'FREE',
       neighborhoodId: profile.neighborhood_id,
       address: profile.address,
       city: profile.city,
@@ -33,6 +35,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       photoUrl: profile.photo_url,
       lat: profile.lat,
       lng: profile.lng,
+      // Se 'approved' não existir (legado), considera true. Se existir, usa o valor.
+      approved: profile.approved !== false, 
       mpPublicKey: profile.mp_public_key,
       mpAccessToken: profile.mp_access_token
   });
@@ -58,7 +62,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
                       email: email,
                       name: email.split('@')[0],
                       role: 'RESIDENT',
-                      plan: 'FREE'
+                      plan: 'FREE',
+                      approved: true // Default approved for self-healing
                   }])
                   .select()
                   .single();
@@ -83,14 +88,17 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
             const { data: { session } } = await supabase.auth.getSession();
             if (session?.user) {
                 // Set optimistic user first
-                setUser({
+                const userData: User = {
                     id: session.user.id,
                     email: session.user.email!,
                     name: session.user.user_metadata?.name || session.user.email!.split('@')[0],
                     role: (session.user.user_metadata?.role as UserRole) || UserRole.RESIDENT,
                     plan: 'FREE', // Default until fetch
-                    neighborhoodId: session.user.user_metadata?.neighborhood_id
-                });
+                    neighborhoodId: session.user.user_metadata?.neighborhood_id,
+                    approved: session.user.user_metadata?.approved !== false // Check meta default
+                };
+                setUser(userData);
+                
                 // Fetch full details in background
                 fetchProfile(session.user.id, session.user.email!);
             }
@@ -112,7 +120,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
                 name: session.user.user_metadata?.name || session.user.email!.split('@')[0],
                 role: (session.user.user_metadata?.role as UserRole) || UserRole.RESIDENT,
                 plan: 'FREE',
-                neighborhoodId: session.user.user_metadata?.neighborhood_id
+                neighborhoodId: session.user.user_metadata?.neighborhood_id,
+                approved: true // Assume true until fetch corrects it
             });
             fetchProfile(session.user.id, session.user.email!);
          }
@@ -135,6 +144,15 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         if (error) throw error;
 
         if (data.user) {
+             // Verificar se profile está approved fazendo um fetch rápido
+             // (Metadados podem estar desatualizados)
+             const { data: profile } = await supabase.from('profiles').select('approved').eq('id', data.user.id).single();
+             
+             if (profile && profile.approved === false) {
+                 await supabase.auth.signOut();
+                 throw new Error("Sua conta aguarda aprovação do administrador.");
+             }
+
             // LOGIN IMEDIATO (OPTIMISTIC)
             setUser({
                 id: data.user.id,
@@ -142,7 +160,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
                 name: data.user.user_metadata?.name || email.split('@')[0],
                 role: (data.user.user_metadata?.role as UserRole) || UserRole.RESIDENT,
                 plan: 'FREE',
-                neighborhoodId: data.user.user_metadata?.neighborhood_id
+                neighborhoodId: data.user.user_metadata?.neighborhood_id,
+                approved: true
             });
             
             // Carrega detalhes em background
@@ -154,6 +173,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   };
 
   const register = async (email: string, password: string, role: UserRole, name: string, neighborhoodId?: string) => {
+      // Regra de Aprovação: Integrador e SCR nascem "Não Aprovados"
+      const requiresApproval = role === UserRole.INTEGRATOR || role === UserRole.SCR;
+      const isApproved = !requiresApproval;
+
       const { data, error } = await supabase.auth.signUp({
           email,
           password,
@@ -161,12 +184,25 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
               data: {
                   role: role,
                   name: name,
-                  neighborhood_id: neighborhoodId
+                  neighborhood_id: neighborhoodId,
+                  approved: isApproved
               }
           }
       });
       if (error) throw error;
-      // Auto login logic will catch the session change
+
+      // Se requer aprovação, garantir que a coluna no profile esteja false (caso o trigger não pegue o metadado)
+      if (requiresApproval && data.user) {
+          // Atualização de segurança pós-cadastro
+          await supabase.from('profiles').update({ approved: false }).eq('id', data.user.id);
+      }
+
+      // Se não aprovado, faz logout imediato para não permitir acesso ao dashboard
+      if (!isApproved) {
+          await supabase.auth.signOut();
+          setUser(null); 
+          // O componente de Login tratará a mensagem de sucesso diferenciada
+      }
   };
 
   const logout = async () => {
@@ -202,6 +238,12 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     setUser({ ...user, ...data });
   };
 
+  const refreshUser = async () => {
+      if (user) {
+          await fetchProfile(user.id, user.email);
+      }
+  }
+
   return (
     <AuthContext.Provider value={{ 
         user, 
@@ -215,7 +257,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         logout, 
         updateProfile, 
         isAuthenticated: !!user,
-        loading 
+        loading,
+        refreshUser
     }}>
       {children}
     </AuthContext.Provider>

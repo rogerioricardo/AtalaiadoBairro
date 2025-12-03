@@ -1,7 +1,7 @@
 
 
 import { supabase } from '../lib/supabaseClient';
-import { Neighborhood, Alert, CameraProtocol, ChatMessage, UserRole, User, Notification, Plan, ServiceRequest } from '../types';
+import { Neighborhood, Alert, CameraProtocol, ChatMessage, UserRole, User, Notification, Plan, ServiceRequest, Camera } from '../types';
 
 // Cache simples em memória para evitar requests repetidos de bairros
 let cachedNeighborhoods: Neighborhood[] | null = null;
@@ -21,6 +21,8 @@ const mapProfileToUser = (profile: any): User => ({
   photoUrl: profile.photo_url,
   lat: profile.lat,
   lng: profile.lng,
+  // Default to true if undefined (legacy compatibility), unless explicitly false
+  approved: profile.approved !== false, 
   mpPublicKey: profile.mp_public_key,
   mpAccessToken: profile.mp_access_token
 });
@@ -56,6 +58,7 @@ export const MockService = {
           name: n.name,
           // Verifica ambas as colunas para garantir compatibilidade
           iframeUrl: n.iframe_url || n.camera_url || '', 
+          description: n.description,
           lat: n.lat,
           lng: n.lng
         }));
@@ -88,6 +91,7 @@ export const MockService = {
             id: data.id,
             name: data.name,
             iframeUrl: data.iframe_url || data.camera_url || '',
+            description: data.description,
             lat: data.lat,
             lng: data.lng
         };
@@ -97,12 +101,11 @@ export const MockService = {
     }
   },
 
-  createNeighborhood: async (name: string, iframeUrl: string, lat?: number, lng?: number): Promise<Neighborhood> => {
-    // Salva em ambas as colunas se existirem, ou prefere iframe_url
+  createNeighborhood: async (name: string, description: string, lat?: number, lng?: number): Promise<Neighborhood> => {
+    // Agora salvamos descrição em vez de iframe na criação
     const { data, error } = await supabase.from('neighborhoods').insert([{
       name,
-      iframe_url: iframeUrl,
-      // camera_url: iframeUrl, // Opcional dependendo da estrutura atual
+      description: description, 
       lat,
       lng
     }]).select().single();
@@ -113,27 +116,215 @@ export const MockService = {
     return {
       id: data.id,
       name: data.name,
-      iframeUrl: data.iframe_url || data.camera_url,
+      description: data.description,
+      iframeUrl: '', // Inicia sem câmera principal
       lat: data.lat,
       lng: data.lng
     };
   },
 
-  deleteNeighborhood: async (id: string): Promise<void> => {
-      // Primeiro tenta limpar dependências manualmente se o CASCADE falhar
-      try {
-          await supabase.from('alerts').delete().eq('neighborhood_id', id);
-          await supabase.from('chat_messages').delete().eq('neighborhood_id', id);
-      } catch (e) {
-          console.warn("Erro ao limpar dependências manualmente, confiando no CASCADE...", e);
-      }
+  updateNeighborhood: async (id: string, name: string, description: string): Promise<void> => {
+      const { error } = await supabase.from('neighborhoods').update({
+          name,
+          description
+      }).eq('id', id);
 
-      const { error } = await supabase.from('neighborhoods').delete().eq('id', id);
-      if (error) {
-          console.error("Erro ao excluir bairro:", error);
-          throw new Error("Erro ao excluir. Verifique se existem vínculos impedindo a ação. Detalhe: " + error.message);
-      }
+      if (error) throw error;
       cachedNeighborhoods = null;
+  },
+
+  deleteNeighborhood: async (id: string): Promise<void> => {
+      // EXCLUSÃO EM CASCATA MANUAL (NUCLEAR OPTION)
+      // Isso garante que mesmo sem configurações de FK no banco, os dados sejam limpos.
+      try {
+          console.log(`Iniciando limpeza profunda do bairro ${id}...`);
+
+          // 1. Apagar Câmeras Extras
+          await supabase.from('cameras').delete().eq('neighborhood_id', id);
+
+          // 2. Apagar Alertas
+          await supabase.from('alerts').delete().eq('neighborhood_id', id);
+
+          // 3. Apagar Mensagens de Chat
+          await supabase.from('chat_messages').delete().eq('neighborhood_id', id);
+
+          // 4. Apagar Service Requests
+          await supabase.from('service_requests').delete().eq('neighborhood_id', id);
+
+          // 5. Apagar Logs de Ronda
+          await supabase.from('patrol_logs').delete().eq('neighborhood_id', id);
+
+          // 6. Desvincular Moradores (Set neighborhood_id = null)
+          // Isso impede erro de chave estrangeira na tabela profiles
+          await supabase.from('profiles').update({ neighborhood_id: null }).eq('neighborhood_id', id);
+
+          // 7. Finalmente, apagar o Bairro
+          const { error } = await supabase.from('neighborhoods').delete().eq('id', id);
+          
+          if (error) {
+              console.error("Erro fatal ao excluir bairro:", error);
+              throw error; // Repassa erro para UI
+          }
+          
+          console.log("Bairro excluído com sucesso.");
+          cachedNeighborhoods = null;
+
+      } catch (e: any) {
+          console.error("Falha no processo de exclusão:", e);
+          throw new Error("Erro ao excluir bairro: " + e.message);
+      }
+  },
+
+  // --- ADDITIONAL CAMERAS (New Feature) ---
+  getAdditionalCameras: async (neighborhoodId: string): Promise<Camera[]> => {
+      const safeId = sanitizeUUID(neighborhoodId);
+      if (!safeId) return [];
+
+      try {
+          const { data, error } = await supabase.from('cameras').select('*').eq('neighborhood_id', safeId);
+          if (error) {
+              // Silencioso se a tabela não existir ainda para não quebrar a UI
+              return [];
+          }
+          return data.map((c: any) => ({
+              id: c.id,
+              neighborhoodId: c.neighborhood_id,
+              name: c.name,
+              iframeCode: c.iframe_code,
+              lat: c.lat,
+              lng: c.lng
+          }));
+      } catch (e) {
+          return [];
+      }
+  },
+
+  // Busca TODAS as câmeras do sistema (para o mapa global)
+  getAllSystemCameras: async (): Promise<Camera[]> => {
+      try {
+          const { data, error } = await supabase.from('cameras').select('*');
+          if (error) return [];
+          
+          return data.map((c: any) => ({
+              id: c.id,
+              neighborhoodId: c.neighborhood_id,
+              name: c.name,
+              iframeCode: c.iframe_code,
+              lat: c.lat,
+              lng: c.lng
+          }));
+      } catch (e) {
+          console.error("Erro ao buscar todas as câmeras:", e);
+          return [];
+      }
+  },
+
+  addCamera: async (neighborhoodId: string, name: string, iframeCode: string, lat?: number, lng?: number): Promise<Camera> => {
+      const { data, error } = await supabase.from('cameras').insert([{
+          neighborhood_id: neighborhoodId,
+          name: name,
+          iframe_code: iframeCode,
+          lat: lat,
+          lng: lng
+      }]).select().single();
+
+      if (error) throw error;
+
+      return {
+          id: data.id,
+          neighborhoodId: data.neighborhood_id,
+          name: data.name,
+          iframeCode: data.iframe_code,
+          lat: data.lat,
+          lng: data.lng
+      };
+  },
+
+  updateCamera: async (id: string, name: string, iframeCode: string, lat?: number, lng?: number): Promise<void> => {
+      const { error } = await supabase.from('cameras').update({
+          name: name,
+          iframe_code: iframeCode,
+          lat: lat,
+          lng: lng
+      }).eq('id', id);
+
+      if (error) throw error;
+  },
+
+  deleteCamera: async (id: string): Promise<void> => {
+      const { error } = await supabase.from('cameras').delete().eq('id', id);
+      if (error) {
+          console.error("Erro ao deletar câmera extra:", error);
+          throw new Error(error.message);
+      }
+  },
+
+  // --- DANGER ZONE: RESET CAMERAS ---
+  resetSystemCameras: async (): Promise<void> => {
+      try {
+          // 1. Apagar todas as câmeras extras
+          const { error: error1 } = await supabase.from('cameras').delete().neq('id', '00000000-0000-0000-0000-000000000000');
+          if (error1) console.warn("Erro limpando tabela cameras:", error1);
+
+          // 2. Limpar câmeras principais dos bairros (sem apagar os bairros)
+          const { error: error2 } = await supabase.from('neighborhoods').update({ 
+              iframe_url: null, 
+              camera_url: null 
+          }).neq('id', '00000000-0000-0000-0000-000000000000');
+          if (error2) console.warn("Erro limpando colunas do bairro:", error2);
+          
+          cachedNeighborhoods = null;
+      } catch (e) {
+          console.error("Erro ao resetar câmeras:", e);
+          throw new Error("Falha ao limpar câmeras do sistema.");
+      }
+  },
+
+  // --- MAINTENANCE: FIX ORPHANED USERS ---
+  maintenanceFixOrphans: async (): Promise<number> => {
+      try {
+          // 1. Get all valid Neighborhood IDs
+          const { data: hoods, error: hoodError } = await supabase.from('neighborhoods').select('id');
+          if (hoodError) throw hoodError;
+          const validHoodIds = hoods.map(h => h.id);
+
+          // 2. Get all users who HAVE a neighborhood_id
+          const { data: users, error: userError } = await supabase
+              .from('profiles')
+              .select('id, neighborhood_id')
+              .not('neighborhood_id', 'is', null);
+              
+          if (userError) throw userError;
+
+          let fixCount = 0;
+          
+          // 3. Find invalid links and prepare batch updates
+          // (Doing loops for safety/simplicity in mock, in production SQL function is better)
+          const updates = [];
+          for (const user of users) {
+              if (!validHoodIds.includes(user.neighborhood_id)) {
+                  updates.push(user.id);
+              }
+          }
+          
+          if (updates.length > 0) {
+              // Batch update (Supabase `in` filter)
+              const { error: updateError, count } = await supabase
+                  .from('profiles')
+                  .update({ neighborhood_id: null })
+                  .in('id', updates)
+                  .select('id', { count: 'exact' });
+                  
+              if (updateError) throw updateError;
+              fixCount = count || updates.length;
+          }
+          
+          cachedNeighborhoods = null;
+          return fixCount;
+      } catch (e: any) {
+          console.error("Erro na manutenção do banco:", e);
+          throw new Error(e.message);
+      }
   },
 
   // --- ALERTS ---
@@ -234,6 +425,22 @@ export const MockService = {
     }]);
   },
 
+  // Notificar Admin sobre novo cadastro pendente
+  notifyAdminOfRegistration: async (userName: string, userRole: string, neighborhoodName: string): Promise<void> => {
+      try {
+          // Envia notificação global (sem user_id definido) para que todos os admins vejam
+          await supabase.from('notifications').insert([{
+              type: 'REGISTRATION_REQUEST',
+              title: 'Aprovação Necessária',
+              message: `Novo ${userRole} (${userName}) cadastrado no bairro ${neighborhoodName}. Necessita liberação.`,
+              from_user_name: 'Sistema',
+              read: false
+          }]);
+      } catch (e) {
+          console.error("Erro ao notificar admin:", e);
+      }
+  },
+
   getNotifications: async (userId?: string): Promise<Notification[]> => {
     // Busca notificações GLOBAIS (sem user_id) ou DIRECIONADAS (com user_id)
     let query = supabase.from('notifications').select('*').order('timestamp', { ascending: false });
@@ -326,10 +533,11 @@ export const MockService = {
     let query = supabase.from('profiles').select('*');
     const safeNeighborhoodId = sanitizeUUID(neighborhoodId);
     
+    // Se ID fornecido, filtra. Se não (Admin Global), traz tudo.
     if (safeNeighborhoodId) {
         query = query.eq('neighborhood_id', safeNeighborhoodId);
     }
-    // IMPORTANTE: Removemos filtros de role aqui. O frontend filtra.
+    
     const { data } = await query;
     return (data || []).map(mapProfileToUser);
   },
@@ -346,15 +554,47 @@ export const MockService = {
           address: userData.address,
           neighborhood_id: safeNeighborhoodId,
           role: 'RESIDENT',
-          plan: 'FREE' 
+          plan: 'FREE',
+          approved: true 
       }]).select().single();
 
       if (error) throw new Error(error.message);
       return mapProfileToUser(data);
   },
 
+  adminUpdateUser: async (userId: string, data: { name?: string, phone?: string, neighborhoodId?: string | null }): Promise<void> => {
+      const updatePayload: any = {};
+      
+      // Permitir atualização de campos para vazio se enviado
+      if (data.name !== undefined) updatePayload.name = data.name;
+      if (data.phone !== undefined) updatePayload.phone = data.phone;
+      
+      // Handle neighborhood update explicitly without over-sanitization
+      if (data.neighborhoodId !== undefined) {
+          // If empty string or null is passed, we explicitly set null in DB
+          if (data.neighborhoodId === null || data.neighborhoodId === '') {
+              updatePayload.neighborhood_id = null;
+          } else {
+              updatePayload.neighborhood_id = data.neighborhoodId;
+          }
+      }
+
+      const { error } = await supabase.from('profiles').update(updatePayload).eq('id', userId);
+      if (error) throw new Error(error.message);
+  },
+
   deleteUser: async (id: string): Promise<void> => {
       await supabase.from('profiles').delete().eq('id', id);
+  },
+
+  // Aprovar Usuário (SCR/Integrator)
+  approveUser: async (userId: string): Promise<void> => {
+      const { error } = await supabase
+          .from('profiles')
+          .update({ approved: true })
+          .eq('id', userId);
+      
+      if (error) throw error;
   },
 
   getPlans: async (): Promise<Plan[]> => {
@@ -387,16 +627,18 @@ export const MockService = {
       const safeId = sanitizeUUID(neighborhoodId);
       if (!safeId) return null;
 
-      const { data, error } = await supabase
-          .from('profiles')
-          .select('*')
-          .eq('neighborhood_id', safeId)
-          .eq('role', 'INTEGRATOR')
-          .limit(1)
-          .maybeSingle();
+      try {
+        const { data, error } = await supabase
+            .from('profiles')
+            .select('*')
+            .eq('neighborhood_id', safeId)
+            .eq('role', 'INTEGRATOR');
 
-      if (error || !data) return null;
-      return mapProfileToUser(data);
+        if (error || !data || data.length === 0) return null;
+        return mapProfileToUser(data[0]);
+      } catch (e) {
+          return null; // Fail safe
+      }
   },
 
   // --- PATROL LOGS (SCR) ---

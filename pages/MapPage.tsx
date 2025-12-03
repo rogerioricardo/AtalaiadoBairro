@@ -1,12 +1,13 @@
 
+
 import React, { useEffect, useState } from 'react';
 import Layout from '../components/Layout';
 import { MapContainer, TileLayer, Marker, Popup, useMap } from 'react-leaflet';
 import { MockService } from '../services/mockService';
-import { User, Neighborhood, UserRole } from '../types';
+import { User, Neighborhood, UserRole, Camera } from '../types';
 import L from 'leaflet';
 import { useAuth } from '../context/AuthContext';
-import { Layers, Sun, Moon, Globe, Video } from 'lucide-react';
+import { Layers, Sun, Moon, Globe, Video, MapPin } from 'lucide-react';
 
 // Fix Leaflet Default Icon in React using CDN URLs
 const iconUrl = 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon.png';
@@ -28,6 +29,16 @@ const CameraIcon = L.divIcon({
            </div>`,
     iconSize: [30, 30],
     iconAnchor: [15, 15]
+});
+
+// Custom Icon for Neighborhood Centers
+const NeighborhoodIcon = L.divIcon({
+    className: 'custom-hood-marker',
+    html: `<div style="background-color: #3b82f6; width: 24px; height: 24px; border-radius: 4px; display: flex; align-items: center; justify-content: center; box-shadow: 0 0 10px rgba(59, 130, 246, 0.6); border: 2px solid #fff;">
+            <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 0 1 16 0Z"/><circle cx="12" cy="10" r="3"/></svg>
+           </div>`,
+    iconSize: [24, 24],
+    iconAnchor: [12, 12]
 });
 
 // Custom MOTO Icon for SCR markers (Yellow/Neon)
@@ -76,6 +87,7 @@ const MapPage: React.FC = () => {
   const { user } = useAuth();
   const [users, setUsers] = useState<User[]>([]);
   const [neighborhoods, setNeighborhoods] = useState<Neighborhood[]>([]);
+  const [cameras, setCameras] = useState<Camera[]>([]);
   const [currentLayer, setCurrentLayer] = useState<keyof typeof MAP_STYLES>('dark');
   
   const centerPos: [number, number] = user?.lat && user?.lng ? [user.lat, user.lng] : [-27.5969, -48.5495];
@@ -96,6 +108,10 @@ const MapPage: React.FC = () => {
         
         const hoodsData = await MockService.getNeighborhoods();
         setNeighborhoods(hoodsData);
+
+        // Fetch All System Cameras (Nova Configuração)
+        const allCameras = await MockService.getAllSystemCameras();
+        setCameras(allCameras);
     };
     fetchData();
   }, [user]);
@@ -106,7 +122,7 @@ const MapPage: React.FC = () => {
         <div className="mb-4 flex justify-between items-end">
             <div>
                 <h1 className="text-3xl font-bold text-white">Mapa Comunitário</h1>
-                <p className="text-gray-400">Visualize a rede de proteção em tempo real.</p>
+                <p className="text-gray-400">Visualize a rede de proteção e câmeras em tempo real.</p>
             </div>
         </div>
 
@@ -147,14 +163,29 @@ const MapPage: React.FC = () => {
                     )
                 ))}
 
-                {/* Camera Markers */}
+                {/* Neighborhood Center Markers (Blue) */}
                 {neighborhoods.map((h) => (
                     h.lat && h.lng && (
-                        <Marker key={`cam-${h.id}`} position={[h.lat, h.lng]} icon={CameraIcon}>
+                        <Marker key={`hood-${h.id}`} position={[h.lat, h.lng]} icon={NeighborhoodIcon}>
+                             <Popup className="text-black">
+                                <div className="flex items-center gap-2 mb-1">
+                                    <MapPin size={16} />
+                                    <strong className="text-sm">Bairro: {h.name}</strong>
+                                </div>
+                                <span className="text-xs text-blue-600 font-medium">Ponto Central / Info</span>
+                            </Popup>
+                        </Marker>
+                    )
+                ))}
+
+                {/* Individual Camera Markers (Green) - NEW */}
+                {cameras.map((cam) => (
+                    cam.lat && cam.lng && (
+                        <Marker key={`cam-${cam.id}`} position={[cam.lat, cam.lng]} icon={CameraIcon}>
                              <Popup className="text-black">
                                 <div className="flex items-center gap-2 mb-1">
                                     <Video size={16} />
-                                    <strong className="text-sm">Câmera: {h.name}</strong>
+                                    <strong className="text-sm">Câmera: {cam.name}</strong>
                                 </div>
                                 <span className="text-xs text-green-600 font-bold animate-pulse">● EM OPERAÇÃO</span>
                             </Popup>
@@ -207,7 +238,13 @@ const MapPage: React.FC = () => {
                         <div className="w-4 h-4 rounded-full bg-atalaia-neon border border-black flex items-center justify-center shadow-[0_0_5px_rgba(0,255,102,0.5)]">
                              <div className="w-1 h-1 bg-black rounded-full" />
                         </div>
-                        <span className="text-gray-300">Câmeras / Bairros</span>
+                        <span className="text-gray-300">Câmeras (Individual)</span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                        <div className="w-4 h-4 rounded-sm bg-blue-500 border border-black flex items-center justify-center shadow-[0_0_5px_rgba(59,130,246,0.5)]">
+                             <div className="w-1 h-1 bg-black rounded-full" />
+                        </div>
+                        <span className="text-gray-300">Centro do Bairro</span>
                     </div>
                 </div>
             </div>

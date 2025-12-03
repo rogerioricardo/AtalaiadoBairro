@@ -12,6 +12,7 @@ import Profile from './pages/Profile';
 import MapPage from './pages/MapPage';
 import IntegratorUsers from './pages/IntegratorUsers';
 import PaymentSuccess from './pages/PaymentSuccess';
+import Welcome from './pages/Welcome';
 import { ShieldCheck, Loader2 } from 'lucide-react';
 
 // Protected Route Component
@@ -43,6 +44,12 @@ const AppRoutes = () => {
       <Route path="/login" element={<Login />} />
       
       {/* Protected Routes */}
+      <Route path="/welcome" element={
+        <ProtectedRoute>
+          <Welcome />
+        </ProtectedRoute>
+      } />
+
       <Route path="/dashboard" element={
         <ProtectedRoute>
           <Dashboard />

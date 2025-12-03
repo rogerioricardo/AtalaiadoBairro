@@ -18,6 +18,7 @@ export interface User {
   neighborhoodId?: string; // For non-admins
   lat?: number;
   lng?: number;
+  approved?: boolean; // New field for approval status
   // New Profile Fields
   address?: string;
   city?: string;
@@ -32,8 +33,18 @@ export interface User {
 export interface Neighborhood {
   id: string;
   name: string;
-  iframeUrl: string; // Legacy/Display name for logic
+  iframeUrl?: string; // Legacy/Display name for logic (Optional now)
+  description?: string; // New field for info
   cameraUrl?: string; // Database column name mapping
+  lat?: number;
+  lng?: number;
+}
+
+export interface Camera {
+  id: string;
+  neighborhoodId: string;
+  name: string;
+  iframeCode: string;
   lat?: number;
   lng?: number;
 }
@@ -82,7 +93,7 @@ export interface Plan {
 export interface Notification {
   id: string;
   userId?: string; // Se preenchido, é para um usuário específico
-  type: 'PROTOCOL_SUBMISSION' | 'PATROL_ALERT';
+  type: 'PROTOCOL_SUBMISSION' | 'PATROL_ALERT' | 'REGISTRATION_REQUEST';
   title: string;
   message: string;
   data?: any;

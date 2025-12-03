@@ -1,4 +1,5 @@
 
+
 import React, { useState, useEffect } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
@@ -27,6 +28,7 @@ const Login: React.FC = () => {
   const [success, setSuccess] = useState('');
   const [loading, setLoading] = useState(false);
   const [redirectingToPay, setRedirectingToPay] = useState(false);
+  const [pendingApprovalMode, setPendingApprovalMode] = useState(false); // New state for pending approval screen
 
   const loadHoods = async (force = false) => {
       setLoadingHoods(true);
@@ -57,11 +59,30 @@ const Login: React.FC = () => {
           if (!selectedNeighborhoodId && role !== UserRole.ADMIN) {
               throw new Error('Por favor, selecione seu bairro.');
           }
+
+          const selectedHoodName = neighborhoods.find(n => n.id === selectedNeighborhoodId)?.name || 'Bairro';
+
+          // --- VALIDAÇÃO DE INTEGRADOR ÚNICO ---
+          if (role === UserRole.INTEGRATOR) {
+              const existingIntegrator = await MockService.getNeighborhoodIntegrator(selectedNeighborhoodId);
+              if (existingIntegrator) {
+                  throw new Error(`BLOQUEADO: O bairro "${selectedHoodName}" já possui um Integrador responsável (ou mais). Apenas um é permitido.`);
+              }
+          }
+          // -------------------------------------
           
-          // 1. Cria a conta no Supabase
+          // 1. Cria a conta no Supabase (AuthContext lida com approved=false para SCR/Integrator)
           await login(email, password, role, name, selectedNeighborhoodId);
           
-          // 2. Verifica se é um plano pago
+          // VERIFICAÇÃO PÓS-CADASTRO: Se for SCR ou Integrador, não loga e avisa Admin
+          if (role === UserRole.SCR || role === UserRole.INTEGRATOR) {
+              await MockService.notifyAdminOfRegistration(name, role, selectedHoodName);
+              setPendingApprovalMode(true);
+              setLoading(false);
+              return;
+          }
+
+          // 2. Verifica se é um plano pago (apenas Moradores chegam aqui)
           if (planParam && (planParam === 'FAMILY' || planParam === 'PREMIUM')) {
               setSuccess('Cadastro realizado! Gerando pagamento...');
               setRedirectingToPay(true);
@@ -71,12 +92,20 @@ const Login: React.FC = () => {
               
               // Redireciona
               window.location.href = checkoutUrl;
-              return; // PAUSA AQUI para não ir pro dashboard
+              return; 
           }
 
           setSuccess('Cadastro realizado! Entrando...');
-          setTimeout(() => navigate('/dashboard'), 1000);
+          
+          // LÓGICA DE REDIRECIONAMENTO DE BOAS-VINDAS
+          if (role === UserRole.RESIDENT && (!planParam || planParam === 'FREE')) {
+              setTimeout(() => navigate('/welcome'), 1000);
+          } else {
+              setTimeout(() => navigate('/dashboard'), 1000);
+          }
+
       } else {
+          // Login Normal
           await login(email, password);
           setSuccess('Acesso autorizado!');
           setTimeout(() => navigate('/dashboard'), 500);
@@ -88,6 +117,29 @@ const Login: React.FC = () => {
         setRedirectingToPay(false);
     }
   };
+
+  // TELA DE APROVAÇÃO PENDENTE
+  if (pendingApprovalMode) {
+      return (
+        <div className="min-h-screen flex items-center justify-center bg-[#050505] px-4">
+            <Card className="max-w-md w-full p-8 border-yellow-500/30 bg-yellow-900/10 text-center">
+                <div className="w-16 h-16 bg-yellow-500 rounded-full flex items-center justify-center mx-auto mb-6 shadow-[0_0_30px_rgba(234,179,8,0.4)]">
+                    <AlertCircle size={32} className="text-black" />
+                </div>
+                <h2 className="text-2xl font-bold text-white mb-2">Cadastro em Análise</h2>
+                <p className="text-gray-300 mb-6 leading-relaxed">
+                    Sua solicitação de acesso como <strong>{role === UserRole.SCR ? 'Motovigia (SCR)' : 'Integrador'}</strong> foi enviada para o Administrador da plataforma.
+                </p>
+                <div className="bg-black/50 p-4 rounded-lg border border-yellow-500/20 mb-6 text-sm text-yellow-500">
+                    Você receberá a liberação em breve. Por motivos de segurança, o acesso imediato é restrito para esta função.
+                </div>
+                <Button onClick={() => navigate('/')} variant="outline" className="w-full">
+                    Voltar ao Início
+                </Button>
+            </Card>
+        </div>
+      );
+  }
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-[#050505] relative overflow-hidden px-4 py-8">
@@ -212,10 +264,15 @@ const Login: React.FC = () => {
                         value={role}
                         onChange={(e) => setRole(e.target.value as UserRole)}
                         >
-                        <option value={UserRole.INTEGRATOR}>Integrador</option>
-                        <option value={UserRole.SCR}>SCR (Motovigia)</option>
                         <option value={UserRole.RESIDENT}>Morador</option>
+                        <option value={UserRole.SCR}>SCR (Motovigia)</option>
+                        <option value={UserRole.INTEGRATOR}>Integrador</option>
                         </select>
+                        {(role === UserRole.SCR || role === UserRole.INTEGRATOR) && (
+                            <p className="text-[10px] text-yellow-500 flex items-center gap-1 mt-1">
+                                <AlertCircle size={10} /> O cadastro para esta função requer aprovação do Admin.
+                            </p>
+                        )}
                     </div>
                 </>
             )}

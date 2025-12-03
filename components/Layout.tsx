@@ -105,8 +105,12 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
           
           <NavItem to="/cameras" icon={Camera} label="Gestão de Câmeras nos Bairros" />
           
-          {user?.role === UserRole.INTEGRATOR && (
-             <NavItem to="/integrator/users" icon={Users} label="Gestão de Moradores" />
+          {(user?.role === UserRole.INTEGRATOR || user?.role === UserRole.ADMIN) && (
+             <NavItem 
+               to="/integrator/users" 
+               icon={Users} 
+               label={user.role === UserRole.ADMIN ? "Gestão Geral do Sistema" : "Gestão de Moradores"} 
+             />
           )}
 
           <div className="mt-8 mb-4 px-4 text-xs font-semibold text-gray-500 uppercase tracking-wider">
