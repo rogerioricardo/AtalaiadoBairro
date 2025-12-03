@@ -1,4 +1,3 @@
-
 import React, { useState } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { UserRole } from '../types';
@@ -14,7 +13,8 @@ import {
   Bell,
   Users,
   User as UserIcon,
-  MessageCircle
+  MessageCircle,
+  MessageSquare
 } from 'lucide-react';
 
 interface LayoutProps {
@@ -111,6 +111,10 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
                icon={Users} 
                label={user.role === UserRole.ADMIN ? "Gestão Geral do Sistema" : "Gestão de Moradores"} 
              />
+          )}
+
+          {user?.role === UserRole.ADMIN && (
+             <NavItem to="/admin/whatsapp" icon={MessageSquare} label="Central WhatsApp" />
           )}
 
           <div className="mt-8 mb-4 px-4 text-xs font-semibold text-gray-500 uppercase tracking-wider">

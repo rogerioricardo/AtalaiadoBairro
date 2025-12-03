@@ -5,7 +5,7 @@ import { supabase } from '../lib/supabaseClient';
 const SYSTEM_MP_ACCESS_TOKEN = 'APP_USR-2402733175170598-110815-ab4eb9842f819545d66055ec031c9554-2581348917';
 
 export const PaymentService = {
-  createPreference: async (planId: string, userEmail: string, userName: string) => {
+  createPreference: async (planId: string, userEmail: string, userName: string, userPhone?: string) => {
     // 1. Configurar detalhes do plano
     const plansDetails: Record<string, { title: string; price: number }> = {
       'FAMILY': { title: 'Plano Família - Atalaia', price: 39.90 },
@@ -28,7 +28,8 @@ export const PaymentService = {
       ],
       payer: {
         email: userEmail,
-        name: userName
+        name: userName,
+        ...(userPhone && { phone: { area_code: '', number: userPhone } })
       },
       back_urls: {
         success: `${window.location.origin}/#/payment/success?plan=${planId}`, // HashRouter usa #

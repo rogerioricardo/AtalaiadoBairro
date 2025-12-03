@@ -1,4 +1,3 @@
-
 import React from 'react';
 import { HashRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import { AuthProvider, useAuth } from './context/AuthContext';
@@ -13,6 +12,7 @@ import MapPage from './pages/MapPage';
 import IntegratorUsers from './pages/IntegratorUsers';
 import PaymentSuccess from './pages/PaymentSuccess';
 import Welcome from './pages/Welcome';
+import WhatsAppAdmin from './pages/WhatsAppAdmin'; // Importando a nova página
 import { ShieldCheck, Loader2 } from 'lucide-react';
 
 // Protected Route Component
@@ -89,6 +89,12 @@ const AppRoutes = () => {
       <Route path="/integrator/users" element={
         <ProtectedRoute>
           <IntegratorUsers />
+        </ProtectedRoute>
+      } />
+      
+      <Route path="/admin/whatsapp" element={
+        <ProtectedRoute>
+          <WhatsAppAdmin />
         </ProtectedRoute>
       } />
       

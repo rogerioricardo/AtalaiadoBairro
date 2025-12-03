@@ -1,13 +1,17 @@
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { ShieldCheck, Zap, MessageSquare, Users, MapPin, Bell, Clock, BarChart3, MessageCircle, Menu, X, Lock, CreditCard, Smartphone, Download, Printer, Video } from 'lucide-react';
+import { ShieldCheck, Zap, MessageSquare, Users, MapPin, Bell, Clock, BarChart3, MessageCircle, Menu, X, Lock, CreditCard, Smartphone, Download, Printer, Video, Check, Wifi } from 'lucide-react';
 import { Button, Modal } from '../components/UI';
 
 const Landing: React.FC = () => {
   const navigate = useNavigate();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [plateModalOpen, setPlateModalOpen] = useState(false);
+  
+  // State for WhatsApp Animation
+  const [startWaAnimation, setStartWaAnimation] = useState(false);
+  const waSectionRef = useRef<HTMLDivElement>(null);
 
   // Lógica para pular a Landing Page se estiver rodando dentro do App (Capacitor)
   useEffect(() => {
@@ -16,6 +20,25 @@ const Landing: React.FC = () => {
       navigate('/login');
     }
   }, [navigate]);
+
+  // Trigger animation when section is in view
+  useEffect(() => {
+      const observer = new IntersectionObserver(
+          (entries) => {
+              if (entries[0].isIntersecting) {
+                  setStartWaAnimation(true);
+                  observer.disconnect(); // Animate only once
+              }
+          },
+          { threshold: 0.3 }
+      );
+
+      if (waSectionRef.current) {
+          observer.observe(waSectionRef.current);
+      }
+
+      return () => observer.disconnect();
+  }, []);
 
   const handleLogin = () => navigate('/login');
 
@@ -46,6 +69,7 @@ const Landing: React.FC = () => {
             <div className="hidden md:flex items-center space-x-8 text-sm font-medium">
               <button onClick={() => scrollToSection('como-funciona')} className="text-gray-300 hover:text-white transition-colors">Como funciona</button>
               <button onClick={() => scrollToSection('funcionalidades')} className="text-gray-300 hover:text-white transition-colors">Funcionalidades</button>
+              <button onClick={() => scrollToSection('whatsapp-demo')} className="text-gray-300 hover:text-white transition-colors">WhatsApp</button>
               <button onClick={() => scrollToSection('planos')} className="text-gray-300 hover:text-white transition-colors">Planos</button>
               <button onClick={() => setPlateModalOpen(true)} className="flex items-center gap-2 text-atalaia-neon hover:text-white transition-colors border border-atalaia-neon/30 px-3 py-1.5 rounded-full hover:bg-atalaia-neon hover:border-atalaia-neon hover:text-black">
                   <Download size={14} /> Baixar Placa
@@ -77,6 +101,7 @@ const Landing: React.FC = () => {
           <div className="md:hidden absolute top-20 left-0 w-full bg-[#0a0a0a] border-b border-white/10 px-4 py-6 flex flex-col gap-4 shadow-2xl animate-in slide-in-from-top-5">
              <button onClick={() => scrollToSection('como-funciona')} className="text-left text-base font-medium text-gray-300 hover:text-atalaia-neon py-2">Como funciona</button>
              <button onClick={() => scrollToSection('funcionalidades')} className="text-left text-base font-medium text-gray-300 hover:text-atalaia-neon py-2">Funcionalidades</button>
+             <button onClick={() => scrollToSection('whatsapp-demo')} className="text-left text-base font-medium text-gray-300 hover:text-atalaia-neon py-2">WhatsApp</button>
              <button onClick={() => scrollToSection('planos')} className="text-left text-base font-medium text-gray-300 hover:text-atalaia-neon py-2">Planos</button>
              <button onClick={() => { setPlateModalOpen(true); setMobileMenuOpen(false); }} className="text-left text-base font-medium text-atalaia-neon py-2 flex items-center gap-2">
                  <Download size={18} /> Baixar Modelo de Placa
@@ -199,6 +224,131 @@ const Landing: React.FC = () => {
             ))}
           </div>
         </div>
+      </section>
+
+      {/* --- WHATSAPP INTEGRATION DEMO SECTION --- */}
+      <section id="whatsapp-demo" ref={waSectionRef} className="py-20 bg-[#080808] border-y border-white/5 print:hidden overflow-hidden relative">
+          {/* Background Ambient Light */}
+          <div className="absolute top-1/2 left-1/4 w-[400px] h-[400px] bg-green-900/10 rounded-full blur-[120px] pointer-events-none -translate-y-1/2" />
+          
+          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+              <div className="flex flex-col lg:flex-row items-center gap-12 lg:gap-20">
+                  
+                  {/* Left: Text Content */}
+                  <div className="flex-1 text-center lg:text-left z-10">
+                      <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-[#25D366]/10 border border-[#25D366]/30 text-[#25D366] text-xs font-bold uppercase tracking-wider mb-6">
+                          <MessageSquare size={14} /> Integração Oficial
+                      </div>
+                      <h2 className="text-3xl md:text-5xl font-bold text-white mb-6">
+                          Alertas Inteligentes no <span className="text-[#25D366]">WhatsApp</span>
+                      </h2>
+                      <p className="text-gray-400 text-lg mb-8 leading-relaxed">
+                          Não exige que todos os vizinhos tenham o aplicativo instalado. 
+                          O Atalaia envia notificações instantâneas diretamente para o WhatsApp do grupo ou de cada morador, garantindo que ninguém perca um alerta crítico.
+                      </p>
+                      
+                      <ul className="space-y-4 mb-8 text-left max-w-md mx-auto lg:mx-0">
+                          <li className="flex items-center gap-3 text-gray-300">
+                              <Check className="text-[#25D366]" size={18} /> Sem necessidade de app para receber
+                          </li>
+                          <li className="flex items-center gap-3 text-gray-300">
+                              <Check className="text-[#25D366]" size={18} /> Detalhes completos: Quem, Onde e Quando
+                          </li>
+                          <li className="flex items-center gap-3 text-gray-300">
+                              <Check className="text-[#25D366]" size={18} /> Link direto para câmeras ao vivo
+                          </li>
+                      </ul>
+
+                      <Button onClick={() => scrollToSection('planos')} className="h-12 px-8 bg-[#25D366] text-black hover:bg-[#20bd5a] font-bold shadow-[0_0_20px_rgba(37,211,102,0.3)]">
+                          Conectar Meu Bairro
+                      </Button>
+                  </div>
+
+                  {/* Right: Phone Mockup */}
+                  <div className="flex-1 relative z-10 flex justify-center">
+                      <div className="relative w-[300px] h-[600px] bg-black border-[8px] border-[#1a1a1a] rounded-[3rem] shadow-2xl overflow-hidden ring-1 ring-white/10">
+                          {/* Notch/Dynamic Island */}
+                          <div className="absolute top-0 left-1/2 -translate-x-1/2 w-32 h-7 bg-black rounded-b-2xl z-20"></div>
+                          
+                          {/* Phone Screen - WhatsApp Chat UI */}
+                          <div className="w-full h-full bg-[#0b141a] flex flex-col pt-10 relative">
+                              {/* Header */}
+                              <div className="bg-[#202c33] px-4 py-3 flex items-center gap-3 border-b border-[#202c33]">
+                                  <div className="w-8 h-8 rounded-full bg-atalaia-neon flex items-center justify-center text-black font-bold text-xs shrink-0">AT</div>
+                                  <div className="overflow-hidden">
+                                      <p className="text-white text-xs font-bold truncate">Atalaia Segurança Colaborativa</p>
+                                      <p className="text-[10px] text-gray-400">online</p>
+                                  </div>
+                              </div>
+
+                              {/* Chat Area */}
+                              <div className="flex-1 p-4 space-y-6 bg-[url('https://user-images.githubusercontent.com/15075759/28719144-86dc0f70-73b1-11e7-911d-60d70fcded21.png')] bg-opacity-10 bg-repeat overflow-hidden relative">
+                                  
+                                  {/* Date Divider */}
+                                  <div 
+                                    className={`flex justify-center transition-all duration-700 ${startWaAnimation ? 'opacity-100 translate-y-0' : 'opacity-0 -translate-y-4'}`}
+                                    style={{ transitionDelay: '500ms' }}
+                                  >
+                                      <span className="bg-[#1e2a30] text-gray-400 text-[10px] px-3 py-1 rounded-lg uppercase shadow-sm">Hoje</span>
+                                  </div>
+
+                                  {/* Message 1: Panic Alert */}
+                                  <div 
+                                    className={`flex flex-col items-start transition-all duration-700 ease-out transform ${startWaAnimation ? 'opacity-100 translate-x-0' : 'opacity-0 -translate-x-8'}`}
+                                    style={{ transitionDelay: '1500ms' }}
+                                  >
+                                      <div className="bg-[#202c33] p-3 rounded-lg rounded-tl-none max-w-[90%] shadow-md border-l-4 border-red-500 relative">
+                                          <p className="text-[10px] text-red-400 font-bold mb-2">🛡️ ATALAIA - ALERTA DE SEGURANÇA</p>
+                                          
+                                          <p className="text-sm text-white font-bold mb-2">🚨🚨 PÂNICO</p>
+                                          
+                                          <div className="space-y-1 text-[10px] text-gray-300 leading-tight">
+                                              <p>👤 <span className="font-bold text-gray-400">Solicitante:</span> Laura</p>
+                                              <p>📍 <span className="font-bold text-gray-400">Local:</span> Bairro Centro</p>
+                                              <p>📝 <span className="font-bold text-gray-400">Relato:</span> Alguém no pátio!</p>
+                                              <p>🕒 <span className="font-bold text-gray-400">Horário:</span> 15:30:00</p>
+                                          </div>
+                                          
+                                          <div className="mt-2 pt-2 border-t border-white/5">
+                                              <p className="text-[#53bdeb] text-[10px] truncate">🔗 atalaia.cloud/#/login</p>
+                                          </div>
+                                          
+                                          <span className="text-[9px] text-gray-500 absolute bottom-1 right-2">15:30</span>
+                                      </div>
+                                  </div>
+
+                                  {/* Message 2: Suspicious */}
+                                  <div 
+                                    className={`flex flex-col items-start transition-all duration-700 ease-out transform ${startWaAnimation ? 'opacity-100 translate-x-0' : 'opacity-0 -translate-x-8'}`}
+                                    style={{ transitionDelay: '3500ms' }}
+                                  >
+                                      <div className="bg-[#202c33] p-3 rounded-lg rounded-tl-none max-w-[90%] shadow-md border-l-4 border-yellow-500 relative">
+                                          <p className="text-[10px] text-yellow-500 font-bold mb-2">🛡️ ATALAIA - ALERTA DE SEGURANÇA</p>
+                                          
+                                          <p className="text-sm text-white font-bold mb-2">👀 SUSPEITA</p>
+                                          
+                                          <div className="space-y-1 text-[10px] text-gray-300 leading-tight">
+                                              <p>👤 <span className="font-bold text-gray-400">Solicitante:</span> Marcos</p>
+                                              <p>📍 <span className="font-bold text-gray-400">Local:</span> Bairro Centro</p>
+                                              <p>📝 <span className="font-bold text-gray-400">Relato:</span> Carro parado suspeito.</p>
+                                              <p>🕒 <span className="font-bold text-gray-400">Horário:</span> 15:45:00</p>
+                                          </div>
+                                          
+                                          <div className="mt-2 pt-2 border-t border-white/5">
+                                              <p className="text-[#53bdeb] text-[10px] truncate">🔗 atalaia.cloud/#/login</p>
+                                          </div>
+                                          
+                                          <span className="text-[9px] text-gray-500 absolute bottom-1 right-2">15:45</span>
+                                      </div>
+                                  </div>
+
+                              </div>
+                          </div>
+                      </div>
+                  </div>
+
+              </div>
+          </div>
       </section>
 
       {/* ---- ANÚNCIO DO APP ANDROID ---- */}

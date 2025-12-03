@@ -1,12 +1,11 @@
-
-
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import { User, UserRole, UserPlan } from '../types';
 import { supabase } from '../lib/supabaseClient';
+import { MockService } from '../services/mockService'; // Import MockService
 
 interface AuthContextType {
   user: User | null;
-  login: (email: string, password: string, role?: UserRole, name?: string, neighborhoodId?: string) => Promise<void>;
+  login: (email: string, password: string, role?: UserRole, name?: string, neighborhoodId?: string, phone?: string) => Promise<void>;
   logout: () => void;
   updateProfile: (data: Partial<User>) => Promise<void>;
   isAuthenticated: boolean;
@@ -146,7 +145,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         if (data.user) {
              // Verificar se profile está approved fazendo um fetch rápido
              // (Metadados podem estar desatualizados)
-             const { data: profile } = await supabase.from('profiles').select('approved').eq('id', data.user.id).single();
+             const { data: profile } = await supabase.from('profiles').select('approved, phone, name').eq('id', data.user.id).single();
              
              if (profile && profile.approved === false) {
                  await supabase.auth.signOut();
@@ -154,25 +153,31 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
              }
 
             // LOGIN IMEDIATO (OPTIMISTIC)
-            setUser({
+            const loggedUser: User = {
                 id: data.user.id,
                 email: data.user.email!,
                 name: data.user.user_metadata?.name || email.split('@')[0],
                 role: (data.user.user_metadata?.role as UserRole) || UserRole.RESIDENT,
                 plan: 'FREE',
                 neighborhoodId: data.user.user_metadata?.neighborhood_id,
-                approved: true
-            });
+                approved: true,
+                phone: profile?.phone
+            };
+
+            setUser(loggedUser);
             
             // Carrega detalhes em background
             fetchProfile(data.user.id, data.user.email!);
+
+            // Envia Notificação de Login via WhatsApp
+            MockService.notifyUserLogin(loggedUser);
         }
     } finally {
         setLoading(false);
     }
   };
 
-  const register = async (email: string, password: string, role: UserRole, name: string, neighborhoodId?: string) => {
+  const register = async (email: string, password: string, role: UserRole, name: string, neighborhoodId?: string, phone?: string) => {
       // Regra de Aprovação: Integrador e SCR nascem "Não Aprovados"
       const requiresApproval = role === UserRole.INTEGRATOR || role === UserRole.SCR;
       const isApproved = !requiresApproval;
@@ -185,16 +190,30 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
                   role: role,
                   name: name,
                   neighborhood_id: neighborhoodId,
+                  phone: phone, // Save to metadata
                   approved: isApproved
               }
           }
       });
       if (error) throw error;
 
-      // Se requer aprovação, garantir que a coluna no profile esteja false (caso o trigger não pegue o metadado)
-      if (requiresApproval && data.user) {
-          // Atualização de segurança pós-cadastro
-          await supabase.from('profiles').update({ approved: false }).eq('id', data.user.id);
+      if (data.user) {
+          // EXPLICIT UPDATE: Ensure profile table has the phone number and approval status
+          const updateData: any = { approved: isApproved };
+          if (phone) updateData.phone = phone;
+
+          await supabase.from('profiles').update(updateData).eq('id', data.user.id);
+          
+          // NOTIFICAR ADMIN SOBRE NOVO CADASTRO
+          // Tenta resolver o nome do bairro para o alerta
+          let hoodName = 'Bairro ID ' + (neighborhoodId || 'Global');
+          if (neighborhoodId) {
+             const hood = await MockService.getNeighborhoodById(neighborhoodId);
+             if (hood) hoodName = hood.name;
+          }
+
+          // CORREÇÃO: Passando o ID do novo usuário para que o admin possa aprovar pelo painel
+          await MockService.notifyAdminOfRegistration(data.user.id, name, role, hoodName);
       }
 
       // Se não aprovado, faz logout imediato para não permitir acesso ao dashboard
@@ -247,9 +266,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   return (
     <AuthContext.Provider value={{ 
         user, 
-        login: async (email, password, role, name, neighborhoodId) => {
+        login: async (email, password, role, name, neighborhoodId, phone) => {
              if (name) {
-                 return register(email, password, role!, name, neighborhoodId);
+                 return register(email, password, role!, name, neighborhoodId, phone);
              } else {
                  return login(email, password);
              }

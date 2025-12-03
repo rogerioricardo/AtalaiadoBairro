@@ -18,6 +18,7 @@ const Login: React.FC = () => {
   
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
+  const [phone, setPhone] = useState(''); // NEW STATE FOR PHONE
   const [password, setPassword] = useState('');
   const [role, setRole] = useState<UserRole>(UserRole.RESIDENT);
   const [selectedNeighborhoodId, setSelectedNeighborhoodId] = useState('');
@@ -72,11 +73,12 @@ const Login: React.FC = () => {
           // -------------------------------------
           
           // 1. Cria a conta no Supabase (AuthContext lida com approved=false para SCR/Integrator)
-          await login(email, password, role, name, selectedNeighborhoodId);
+          // AGORA PASSANDO PHONE
+          await login(email, password, role, name, selectedNeighborhoodId, phone);
           
           // VERIFICAÇÃO PÓS-CADASTRO: Se for SCR ou Integrador, não loga e avisa Admin
           if (role === UserRole.SCR || role === UserRole.INTEGRATOR) {
-              await MockService.notifyAdminOfRegistration(name, role, selectedHoodName);
+              // A notificação ao admin já é feita dentro do método login/register do AuthContext
               setPendingApprovalMode(true);
               setLoading(false);
               return;
@@ -88,7 +90,7 @@ const Login: React.FC = () => {
               setRedirectingToPay(true);
               
               // Gera link do Mercado Pago
-              const checkoutUrl = await PaymentService.createPreference(planParam, email, name);
+              const checkoutUrl = await PaymentService.createPreference(planParam, email, name, phone);
               
               // Redireciona
               window.location.href = checkoutUrl;
@@ -195,13 +197,22 @@ const Login: React.FC = () => {
         ) : (
             <form onSubmit={handleSubmit} className="space-y-4">
             {isRegister && (
-                <Input 
-                    label="Nome Completo" 
-                    placeholder="Seu Nome" 
-                    value={name}
-                    onChange={(e) => setName(e.target.value)}
-                    required={isRegister}
-                />
+                <>
+                    <Input 
+                        label="Nome Completo" 
+                        placeholder="Seu Nome" 
+                        value={name}
+                        onChange={(e) => setName(e.target.value)}
+                        required
+                    />
+                    <Input 
+                        label="WhatsApp" 
+                        placeholder="+55 48 99999-9999" 
+                        value={phone}
+                        onChange={(e) => setPhone(e.target.value)}
+                        required
+                    />
+                </>
             )}
 
             <Input 

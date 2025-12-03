@@ -1,4 +1,5 @@
 
+
 import React, { useEffect, useState, useRef } from 'react';
 import Layout from '../components/Layout';
 import { useAuth } from '../context/AuthContext';
@@ -262,7 +263,7 @@ const Cameras: React.FC = () => {
       if (!user) return;
       setProcessingUpgrade(planId);
       try {
-          const checkoutUrl = await PaymentService.createPreference(planId, user.email, user.name);
+          const checkoutUrl = await PaymentService.createPreference(planId, user.email, user.name, user.phone);
           window.location.href = checkoutUrl;
       } catch (error: any) {
           alert('Erro ao gerar pagamento: ' + error.message);

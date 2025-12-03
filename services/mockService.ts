@@ -1,5 +1,3 @@
-
-
 import { supabase } from '../lib/supabaseClient';
 import { Neighborhood, Alert, CameraProtocol, ChatMessage, UserRole, User, Notification, Plan, ServiceRequest, Camera } from '../types';
 
@@ -35,6 +33,45 @@ const sanitizeUUID = (id?: string): string | null => {
     // Simple regex check for UUID format (loose check)
     if (id.length < 20) return null; 
     return id;
+};
+
+// --- FUNÇÃO AUXILIAR DE DISPARO WHATSAPP VIA EDGE FUNCTION (BACKEND) ---
+const triggerEdgeFunctionAlert = async (message: string, targetNumbers?: string[]) => {
+    // Se não houver números alvo, não dispara para evitar spam no grupo padrão em casos de login/cadastro
+    // EXCETO se targetNumbers for undefined (aí usa o default)
+    if (targetNumbers && targetNumbers.length === 0) {
+        console.warn("⚠️ Tentativa de envio de WhatsApp cancelada: Lista de números vazia.");
+        return;
+    }
+
+    console.log(`🚀 Acionando Edge Function 'send-alert'. Alvos: ${targetNumbers?.length || 'Grupo Padrão'}`);
+    try {
+        const { data, error } = await supabase.functions.invoke('send-alert', {
+            body: { 
+                message: message,
+                numbers: targetNumbers // Envia a lista de números (se houver)
+            }
+        });
+
+        if (error) {
+            console.error("❌ Erro na Edge Function:", error);
+            throw error; // Propaga erro para a UI pegar
+        } else {
+            console.log("✅ Alerta processado pelo Backend:", data);
+            return data;
+        }
+    } catch (err) {
+        console.error("❌ Falha crítica ao chamar Edge Function:", err);
+        throw err;
+    }
+};
+
+// Helper para limpar telefone (Ex: +55 (48) 999... -> 5548999...)
+const cleanPhoneForWhatsapp = (phone?: string): string | null => {
+    if (!phone) return null;
+    const cleaned = phone.replace(/\D/g, ''); // Remove tudo que não é número
+    if (cleaned.length < 10) return null; // Número inválido
+    return cleaned; 
 };
 
 export const MockService = {
@@ -135,35 +172,21 @@ export const MockService = {
 
   deleteNeighborhood: async (id: string): Promise<void> => {
       // EXCLUSÃO EM CASCATA MANUAL (NUCLEAR OPTION)
-      // Isso garante que mesmo sem configurações de FK no banco, os dados sejam limpos.
       try {
           console.log(`Iniciando limpeza profunda do bairro ${id}...`);
 
-          // 1. Apagar Câmeras Extras
           await supabase.from('cameras').delete().eq('neighborhood_id', id);
-
-          // 2. Apagar Alertas
           await supabase.from('alerts').delete().eq('neighborhood_id', id);
-
-          // 3. Apagar Mensagens de Chat
           await supabase.from('chat_messages').delete().eq('neighborhood_id', id);
-
-          // 4. Apagar Service Requests
           await supabase.from('service_requests').delete().eq('neighborhood_id', id);
-
-          // 5. Apagar Logs de Ronda
           await supabase.from('patrol_logs').delete().eq('neighborhood_id', id);
-
-          // 6. Desvincular Moradores (Set neighborhood_id = null)
-          // Isso impede erro de chave estrangeira na tabela profiles
           await supabase.from('profiles').update({ neighborhood_id: null }).eq('neighborhood_id', id);
-
-          // 7. Finalmente, apagar o Bairro
+          
           const { error } = await supabase.from('neighborhoods').delete().eq('id', id);
           
           if (error) {
               console.error("Erro fatal ao excluir bairro:", error);
-              throw error; // Repassa erro para UI
+              throw error; 
           }
           
           console.log("Bairro excluído com sucesso.");
@@ -183,7 +206,6 @@ export const MockService = {
       try {
           const { data, error } = await supabase.from('cameras').select('*').eq('neighborhood_id', safeId);
           if (error) {
-              // Silencioso se a tabela não existir ainda para não quebrar a UI
               return [];
           }
           return data.map((c: any) => ({
@@ -199,7 +221,6 @@ export const MockService = {
       }
   },
 
-  // Busca TODAS as câmeras do sistema (para o mapa global)
   getAllSystemCameras: async (): Promise<Camera[]> => {
       try {
           const { data, error } = await supabase.from('cameras').select('*');
@@ -259,14 +280,11 @@ export const MockService = {
       }
   },
 
-  // --- DANGER ZONE: RESET CAMERAS ---
   resetSystemCameras: async (): Promise<void> => {
       try {
-          // 1. Apagar todas as câmeras extras
           const { error: error1 } = await supabase.from('cameras').delete().neq('id', '00000000-0000-0000-0000-000000000000');
           if (error1) console.warn("Erro limpando tabela cameras:", error1);
 
-          // 2. Limpar câmeras principais dos bairros (sem apagar os bairros)
           const { error: error2 } = await supabase.from('neighborhoods').update({ 
               iframe_url: null, 
               camera_url: null 
@@ -280,15 +298,12 @@ export const MockService = {
       }
   },
 
-  // --- MAINTENANCE: FIX ORPHANED USERS ---
   maintenanceFixOrphans: async (): Promise<number> => {
       try {
-          // 1. Get all valid Neighborhood IDs
           const { data: hoods, error: hoodError } = await supabase.from('neighborhoods').select('id');
           if (hoodError) throw hoodError;
           const validHoodIds = hoods.map(h => h.id);
 
-          // 2. Get all users who HAVE a neighborhood_id
           const { data: users, error: userError } = await supabase
               .from('profiles')
               .select('id, neighborhood_id')
@@ -297,9 +312,6 @@ export const MockService = {
           if (userError) throw userError;
 
           let fixCount = 0;
-          
-          // 3. Find invalid links and prepare batch updates
-          // (Doing loops for safety/simplicity in mock, in production SQL function is better)
           const updates = [];
           for (const user of users) {
               if (!validHoodIds.includes(user.neighborhood_id)) {
@@ -308,7 +320,6 @@ export const MockService = {
           }
           
           if (updates.length > 0) {
-              // Batch update (Supabase `in` filter)
               const { error: updateError, count } = await supabase
                   .from('profiles')
                   .update({ neighborhood_id: null })
@@ -332,8 +343,6 @@ export const MockService = {
     let query = supabase.from('alerts').select('*').order('timestamp', { ascending: false }).limit(50);
     const safeNeighborhoodId = sanitizeUUID(neighborhoodId);
 
-    // Se tiver ID de bairro, filtra. Se não tiver (Admin Global ou erro), tenta buscar tudo ou filtra nulo.
-    // Para SCR e Integrador, é crucial que eles vejam os alertas do bairro.
     if (safeNeighborhoodId) {
       query = query.eq('neighborhood_id', safeNeighborhoodId);
     }
@@ -353,6 +362,7 @@ export const MockService = {
   createAlert: async (alert: Omit<Alert, 'id' | 'timestamp'> & { userRole?: UserRole }): Promise<Alert> => {
     const safeNeighborhoodId = sanitizeUUID(alert.neighborhoodId);
 
+    // 1. SALVAR NO SUPABASE (Log Central)
     const { data, error } = await supabase.from('alerts').insert([{
       type: alert.type,
       user_id: alert.userId,
@@ -367,7 +377,61 @@ export const MockService = {
         throw error;
     }
 
-    // Auto-post to chat (Fire and Forget - Silent Catch)
+    // 2. DISPARAR WHATSAPP INDIVIDUAL (BROADCAST) VIA BACKEND
+    // Em vez de enviar para um grupo, vamos buscar todos os vizinhos e enviar 1 a 1.
+    (async () => {
+        try {
+            const emojis: Record<string, string> = {
+                'PANIC': '🚨🚨 PÂNICO',
+                'DANGER': '⚠️⚠️ PERIGO',
+                'SUSPICIOUS': '👀 SUSPEITA',
+                'OK': '✅ TUDO BEM'
+            };
+            
+            const title = emojis[alert.type] || 'ALERTA';
+            
+            // Busca o nome real do bairro para a mensagem
+            let locationMsg = '(Global)';
+            if (safeNeighborhoodId) {
+                const { data: hood } = await supabase.from('neighborhoods').select('name').eq('id', safeNeighborhoodId).single();
+                if (hood) locationMsg = `Bairro ${hood.name}`;
+                else locationMsg = `Bairro ID: ${safeNeighborhoodId.slice(0,4)}...`;
+            }
+            
+            const waBody = `🛡️ *ATALAIA - ALERTA DE SEGURANÇA*\n\n${title}\n👤 *Solicitante:* ${alert.userName}\n📍 *Local:* ${locationMsg}\n📝 *Relato:* ${alert.message || 'Sem descrição'}\n🕒 *Horário:* ${new Date().toLocaleTimeString()}\n\n🔗 Abra o app para ver: https://atalaia.cloud/#/login`;
+            
+            // --- NOVA LÓGICA DE BROADCAST INDIVIDUAL ---
+            let phoneNumbers: string[] = [];
+
+            if (safeNeighborhoodId) {
+                // Busca telefones de todos os usuários deste bairro
+                const { data: neighbors } = await supabase
+                    .from('profiles')
+                    .select('phone')
+                    .eq('neighborhood_id', safeNeighborhoodId)
+                    .neq('id', alert.userId); // Não envia para quem disparou (opcional)
+
+                if (neighbors) {
+                    phoneNumbers = neighbors
+                        .map(u => cleanPhoneForWhatsapp(u.phone))
+                        .filter(p => p !== null) as string[];
+                }
+            }
+            
+            // Envia para a Edge Function com a lista de destinatários
+            if (phoneNumbers.length > 0) {
+                await triggerEdgeFunctionAlert(waBody, phoneNumbers);
+            } else {
+                console.warn("Nenhum telefone válido encontrado no bairro para broadcast. Enviando para fallback.");
+                await triggerEdgeFunctionAlert(waBody); // Vai para o DEFAULT_DESTINATION da Edge Function
+            }
+
+        } catch (waError) {
+            console.error("Erro silencioso ao processar envio WhatsApp:", waError);
+        }
+    })();
+
+    // 3. POSTAR NO CHAT INTERNO
     try {
         const alertMessages: Record<string, string> = {
             'PANIC': '🚨 PÂNICO ACIONADO! Preciso de ajuda urgente!',
@@ -425,29 +489,115 @@ export const MockService = {
     }]);
   },
 
-  // Notificar Admin sobre novo cadastro pendente
-  notifyAdminOfRegistration: async (userName: string, userRole: string, neighborhoodName: string): Promise<void> => {
+  // --- NOTIFICAÇÕES & WHATSAPP ---
+
+  // Método genérico para envio de mensagem
+  sendWhatsAppMessage: async (message: string, numbers: string[]) => {
+      await triggerEdgeFunctionAlert(message, numbers);
+  },
+  
+  // NOVO: Método de Broadcast Administrativo (Custom Message)
+  sendCustomBroadcast: async (message: string, targetType: 'ALL' | 'ADMINS' | 'HOOD', targetHoodId?: string): Promise<{ sentCount: number }> => {
+      // 1. Identificar quem deve receber
+      let query = supabase.from('profiles').select('phone');
+
+      if (targetType === 'ADMINS') {
+          query = query.eq('role', 'ADMIN');
+      } else if (targetType === 'HOOD' && targetHoodId) {
+          query = query.eq('neighborhood_id', targetHoodId);
+      }
+      // Se ALL, não aplica filtro, pega todos
+
+      const { data, error } = await query;
+      if (error) throw error;
+
+      // 2. Limpar telefones
+      const phoneNumbers = (data || [])
+          .map(u => cleanPhoneForWhatsapp(u.phone))
+          .filter(p => p !== null) as string[];
+
+      // 3. Enviar se houver destinatários
+      if (phoneNumbers.length > 0) {
+          await triggerEdgeFunctionAlert(message, phoneNumbers);
+      } else {
+          // Se for teste ou não tiver ninguém, tenta mandar pro fallback (opcional, aqui vou retornar 0)
+          console.warn("Nenhum destinatário válido para o broadcast.");
+      }
+
+      return { sentCount: phoneNumbers.length };
+  },
+
+  // Notifica ADMINs sobre novo cadastro (incluindo WhatsApp)
+  notifyAdminOfRegistration: async (pendingUserId: string, userName: string, userRole: string, neighborhoodName: string): Promise<void> => {
       try {
-          // Envia notificação global (sem user_id definido) para que todos os admins vejam
+          // 1. Notificação interna COM DADOS PARA AÇÃO
           await supabase.from('notifications').insert([{
               type: 'REGISTRATION_REQUEST',
               title: 'Aprovação Necessária',
               message: `Novo ${userRole} (${userName}) cadastrado no bairro ${neighborhoodName}. Necessita liberação.`,
+              data: { pendingUserId }, // Salva o ID para o botão de aprovar funcionar
               from_user_name: 'Sistema',
               read: false
           }]);
+          
+          // 2. WhatsApp para Admins
+          await MockService.notifyAdmins(userName, userRole, neighborhoodName);
+
       } catch (e) {
           console.error("Erro ao notificar admin:", e);
       }
   },
 
+  // Notifica Admins (WhatsApp)
+  notifyAdmins: async (newUserName: string, role: string, neighborhoodName: string) => {
+      try {
+          const { data: admins } = await supabase.from('profiles').select('phone').eq('role', 'ADMIN');
+          const msg = `🔔 *ATALAIA - NOVO CADASTRO*\n\n👤 *Nome:* ${newUserName}\n🛡️ *Perfil:* ${role}\n📍 *Bairro:* ${neighborhoodName}\n\n🔗 https://atalaia.cloud/#/integrator/users`;
+
+          let adminPhones: string[] = [];
+          
+          if (admins && admins.length > 0) {
+              adminPhones = admins
+                  .map(a => cleanPhoneForWhatsapp(a.phone))
+                  .filter(p => p !== null) as string[];
+          }
+
+          if (adminPhones.length > 0) {
+              await triggerEdgeFunctionAlert(msg, adminPhones);
+          } else {
+              // FALLBACK: Se nenhum admin tiver telefone cadastrado, envia para o Grupo Padrão (sem lista de números)
+              // Isso garante que o alerta não seja perdido silenciosamente
+              console.warn("Nenhum telefone de Admin encontrado. Enviando para grupo padrão.");
+              await triggerEdgeFunctionAlert(msg); 
+          }
+      } catch (e) {
+          console.error("Erro ao enviar Whats para Admin:", e);
+      }
+  },
+
+  // Notifica Usuário sobre Login (Segurança)
+  notifyUserLogin: async (user: User) => {
+      try {
+          const phone = cleanPhoneForWhatsapp(user.phone);
+          if (phone) {
+              const msg = `🔐 *ATALAIA SECURITY*\n\nOlá ${user.name}, detectamos um novo acesso à sua conta agora.\n📅 *Data:* ${new Date().toLocaleString()}\n\n_Se não foi você, contate o administrador imediatamente._`;
+              await triggerEdgeFunctionAlert(msg, [phone]);
+          }
+      } catch (e) {
+          console.error("Erro ao notificar login:", e);
+      }
+  },
+
   getNotifications: async (userId?: string): Promise<Notification[]> => {
-    // Busca notificações GLOBAIS (sem user_id) ou DIRECIONADAS (com user_id)
     let query = supabase.from('notifications').select('*').order('timestamp', { ascending: false });
     
     if (userId) {
-        query = query.or(`user_id.eq.${userId},user_id.is.null`);
+        // Se for usuário comum, vê apenas as suas
+        query = query.eq('user_id', userId);
     } else {
+        // Se userId for undefined (Admin view), vê as globais (null) e as dele mesmo se quisesse, 
+        // mas o dashboard admin costuma puxar as globais.
+        // CORREÇÃO: REGISTRATION_REQUEST são globais (user_id is null).
         query = query.is('user_id', null);
     }
 
@@ -478,7 +628,6 @@ export const MockService = {
     if (safeNeighborhoodId) {
         query = query.eq('neighborhood_id', safeNeighborhoodId);
     } else {
-        // Se for global ou sem bairro, tenta pegar mensagens sem bairro ou falha silenciosa
         query = query.is('neighborhood_id', null);
     }
 
@@ -533,7 +682,6 @@ export const MockService = {
     let query = supabase.from('profiles').select('*');
     const safeNeighborhoodId = sanitizeUUID(neighborhoodId);
     
-    // Se ID fornecido, filtra. Se não (Admin Global), traz tudo.
     if (safeNeighborhoodId) {
         query = query.eq('neighborhood_id', safeNeighborhoodId);
     }
@@ -559,19 +707,21 @@ export const MockService = {
       }]).select().single();
 
       if (error) throw new Error(error.message);
+      
+      // Notifica Admin sobre novo cadastro manual via painel
+      const hoodName = (await MockService.getNeighborhoodById(safeNeighborhoodId || ''))?.name || 'Desconhecido';
+      MockService.notifyAdmins(userData.name || 'Novo Usuário', 'RESIDENT', hoodName);
+
       return mapProfileToUser(data);
   },
 
   adminUpdateUser: async (userId: string, data: { name?: string, phone?: string, neighborhoodId?: string | null }): Promise<void> => {
       const updatePayload: any = {};
       
-      // Permitir atualização de campos para vazio se enviado
       if (data.name !== undefined) updatePayload.name = data.name;
       if (data.phone !== undefined) updatePayload.phone = data.phone;
       
-      // Handle neighborhood update explicitly without over-sanitization
       if (data.neighborhoodId !== undefined) {
-          // If empty string or null is passed, we explicitly set null in DB
           if (data.neighborhoodId === null || data.neighborhoodId === '') {
               updatePayload.neighborhood_id = null;
           } else {
@@ -587,14 +737,36 @@ export const MockService = {
       await supabase.from('profiles').delete().eq('id', id);
   },
 
-  // Aprovar Usuário (SCR/Integrator)
   approveUser: async (userId: string): Promise<void> => {
-      const { error } = await supabase
+      // 1. UPDATE com checagem de linhas afetadas (count)
+      const { error, count } = await supabase
           .from('profiles')
           .update({ approved: true })
-          .eq('id', userId);
+          .eq('id', userId)
+          .select('id', { count: 'exact' });
       
-      if (error) throw error;
+      if (error) {
+          const msg = error.message?.toLowerCase() || '';
+          // Detectar erro de recursão e dar mensagem amigável
+          if (msg.includes("infinite recursion") || msg.includes("policy")) {
+              throw new Error("ERRO CRÍTICO: Loop nas permissões do banco (RLS). Execute o script SQL de correção no Supabase.");
+          }
+          throw error;
+      }
+
+      if (count === 0) {
+          throw new Error("Falha na aprovação: Permissão negada ou usuário não encontrado. Verifique as políticas RLS.");
+      }
+      
+      // Tenta buscar o usuário para notificar via WhatsApp
+      const { data } = await supabase.from('profiles').select('*').eq('id', userId).single();
+      if (data && data.phone) {
+          const phone = cleanPhoneForWhatsapp(data.phone);
+          if (phone) {
+             const msg = `✅ *CADASTRO APROVADO*\n\nParabéns ${data.name}, seu acesso ao sistema Atalaia foi liberado pelo administrador.\nVocê já pode fazer login.`;
+             await triggerEdgeFunctionAlert(msg, [phone]);
+          }
+      }
   },
 
   getPlans: async (): Promise<Plan[]> => {
@@ -613,7 +785,6 @@ export const MockService = {
       if (error) throw error;
   },
 
-  // --- INTEGRATOR CONFIG ---
   updateIntegratorConfig: async (userId: string, publicKey: string, accessToken: string): Promise<void> => {
       const { error } = await supabase
           .from('profiles')
@@ -637,15 +808,13 @@ export const MockService = {
         if (error || !data || data.length === 0) return null;
         return mapProfileToUser(data[0]);
       } catch (e) {
-          return null; // Fail safe
+          return null; 
       }
   },
 
-  // --- PATROL LOGS (SCR) ---
   registerPatrol: async (userId: string, neighborhoodId: string, note: string, lat?: number, lng?: number, targetUserId?: string): Promise<void> => {
       const safeNeighborhoodId = sanitizeUUID(neighborhoodId);
       
-      // 1. Cria o log de ronda
       const { error } = await supabase.from('patrol_logs').insert([{
           user_id: userId,
           neighborhood_id: safeNeighborhoodId,
@@ -660,7 +829,6 @@ export const MockService = {
           throw new Error('Falha ao registrar check-in');
       }
 
-      // 2. ATUALIZA A POSIÇÃO DO SCR NO PERFIL PARA O MAPA
       if (lat && lng) {
           try {
               await supabase.from('profiles').update({
@@ -672,7 +840,6 @@ export const MockService = {
           }
       }
 
-      // 3. Se houver um morador alvo, cria uma notificação para ele
       if (targetUserId) {
           try {
               await supabase.from('notifications').insert([{
@@ -683,13 +850,23 @@ export const MockService = {
                   from_user_name: 'Equipe Tática',
                   read: false
               }]);
+              
+              // Opcional: Avisar morador via WhatsApp também
+              const { data: user } = await supabase.from('profiles').select('phone, name').eq('id', targetUserId).single();
+              if (user && user.phone) {
+                  const phone = cleanPhoneForWhatsapp(user.phone);
+                  if (phone) {
+                      const msg = `👮 *RONDA ATALAIA*\n\nOlá ${user.name}, o Motovigia registrou uma atividade:\n"${note}"\n\n_Verifique o app para mais detalhes._`;
+                      await triggerEdgeFunctionAlert(msg, [phone]);
+                  }
+              }
+
           } catch (notifError) {
               console.warn("Erro ao notificar morador, mas log foi salvo:", notifError);
           }
       }
   },
 
-  // --- SERVICE REQUESTS (PREMIUM TO SCR) ---
   createServiceRequest: async (userId: string, userName: string, neighborhoodId: string, type: 'ESCORT' | 'EXTRA_ROUND' | 'TRAVEL_NOTICE'): Promise<void> => {
       const safeNeighborhoodId = sanitizeUUID(neighborhoodId);
       
@@ -706,7 +883,6 @@ export const MockService = {
           throw new Error('Falha ao enviar solicitação ao SCR');
       }
       
-      // NOTIFICAR SCRs DO BAIRRO
       try {
           const scrs = await MockService.getNeighborhoodSCRs(safeNeighborhoodId || '');
           const notifs = scrs.map(scr => ({
@@ -720,6 +896,13 @@ export const MockService = {
           if (notifs.length > 0) {
               const { error: notifError } = await supabase.from('notifications').insert(notifs);
               if(notifError) console.error("Erro notificando SCR:", notifError);
+              
+              // Notifica SCRs via WhatsApp
+              const scrPhones = scrs.map(s => cleanPhoneForWhatsapp(s.phone)).filter(p => p !== null) as string[];
+              if (scrPhones.length > 0) {
+                  const msg = `⭐ *SOLICITAÇÃO VIP*\n\nO morador ${userName} solicitou: *${type}*.\nVerifique o Painel Tático imediatamente.`;
+                  await triggerEdgeFunctionAlert(msg, scrPhones);
+              }
           }
       } catch (err) {
           console.error("Falha no fluxo de notificação SCR:", err);
@@ -730,8 +913,6 @@ export const MockService = {
       const safeId = sanitizeUUID(neighborhoodId);
       if (!safeId) return [];
       
-      // Busca usuários SCR do bairro. 
-      // O RLS deve permitir que qualquer authenticated leia profiles.
       const { data } = await supabase
           .from('profiles')
           .select('*')

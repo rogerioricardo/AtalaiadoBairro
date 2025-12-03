@@ -1,4 +1,3 @@
-
 import React, { useEffect, useState } from 'react';
 import Layout from '../components/Layout';
 import { useAuth } from '../context/AuthContext';
@@ -8,7 +7,7 @@ import { MockService } from '../services/mockService';
 import { 
     AlertTriangle, Video, Users, Activity, MapPin, Inbox, Copy, Trash2, 
     Heart, DollarSign, Loader2, Navigation, FileText, 
-    Shield, Star, Lock, Send, Search, CheckCircle
+    Shield, Star, Lock, Send, Search, CheckCircle, UserCheck, XCircle
 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { PaymentService } from '../services/paymentService';
@@ -277,9 +276,13 @@ const Dashboard: React.FC = () => {
   const [donationAmount, setDonationAmount] = useState('10.00');
   const [neighborhoodIntegrator, setNeighborhoodIntegrator] = useState<User | null>(null);
   const [processingDonation, setProcessingDonation] = useState(false);
+  const [actionLoading, setActionLoading] = useState<string | null>(null);
 
   // Upgrade Modal for SCR feature
   const [showSCRUpgradeModal, setShowSCRUpgradeModal] = useState(false);
+  
+  // POPUP FEEDBACK STATE
+  const [feedback, setFeedback] = useState<{ msg: string, type: 'success' | 'error' } | null>(null);
 
   useEffect(() => {
     const fetchData = async () => {
@@ -321,12 +324,47 @@ const Dashboard: React.FC = () => {
   if (user?.role === UserRole.SCR) {
       return <SCRDashboard user={user} neighborhood={myNeighborhood} />;
   }
+  
+  const showFeedback = (msg: string, type: 'success' | 'error') => {
+      setFeedback({ msg, type });
+      setTimeout(() => setFeedback(null), 4000);
+  };
 
   const handleDeleteNotification = async (id: string) => {
     if (window.confirm('Tem certeza que deseja excluir esta notificação?')) {
         await MockService.deleteNotification(id);
         setNotifications(prev => prev.filter(n => n.id !== id));
     }
+  };
+
+  const handleApproveFromNotification = async (notifId: string, pendingUserId: string) => {
+      setActionLoading(notifId);
+      try {
+          await MockService.approveUser(pendingUserId);
+          await MockService.deleteNotification(notifId);
+          setNotifications(prev => prev.filter(n => n.id !== notifId));
+          showFeedback('Acesso liberado com sucesso!', 'success');
+      } catch (e: any) {
+          showFeedback('Erro: ' + e.message, 'error');
+      } finally {
+          setActionLoading(null);
+      }
+  };
+
+  const handleRejectFromNotification = async (notifId: string, pendingUserId: string) => {
+      if(!window.confirm("Rejeitar e excluir este cadastro?")) return;
+      
+      setActionLoading(notifId);
+      try {
+          await MockService.deleteUser(pendingUserId);
+          await MockService.deleteNotification(notifId);
+          setNotifications(prev => prev.filter(n => n.id !== notifId));
+          showFeedback('Cadastro rejeitado e removido.', 'success');
+      } catch (e: any) {
+          showFeedback('Erro ao rejeitar: ' + e.message, 'error');
+      } finally {
+          setActionLoading(null);
+      }
   };
 
   const handleDonation = async () => {
@@ -383,6 +421,22 @@ const Dashboard: React.FC = () => {
 
   return (
     <Layout>
+      {/* POPUP FEEDBACK TOAST */}
+      {feedback && (
+            <div className={`
+                fixed bottom-6 right-6 z-50 px-6 py-4 rounded-xl shadow-2xl border flex items-center gap-3 animate-in slide-in-from-right-10 duration-300
+                ${feedback.type === 'success' ? 'bg-[#0f1a12] border-atalaia-neon text-white' : 'bg-red-900/90 border-red-500 text-white'}
+            `}>
+                <div className={`p-2 rounded-full ${feedback.type === 'success' ? 'bg-atalaia-neon text-black' : 'bg-red-500 text-white'}`}>
+                    {feedback.type === 'success' ? <CheckCircle size={20} /> : <XCircle size={20} />}
+                </div>
+                <div>
+                    <h4 className="font-bold text-sm uppercase">{feedback.type === 'success' ? 'Sucesso' : 'Erro'}</h4>
+                    <p className="text-sm text-gray-300">{feedback.msg}</p>
+                </div>
+            </div>
+      )}
+    
       <div className="mb-8 flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
         <div>
             <h1 className="text-3xl font-bold text-white mb-2">Painel de Controle</h1>
@@ -468,8 +522,10 @@ const Dashboard: React.FC = () => {
               </h2>
               <div className="space-y-4">
                   {notifications
-                    // FILTER: Hide protocol submissions from non-admins
+                    // FILTER 1: Hide protocol submissions from non-admins
                     .filter(notif => user?.role === UserRole.ADMIN || notif.type !== 'PROTOCOL_SUBMISSION')
+                    // FILTER 2: Hide REGISTRATION_REQUEST from non-admins (Double check safety)
+                    .filter(notif => user?.role === UserRole.ADMIN || notif.type !== 'REGISTRATION_REQUEST')
                     .map(notif => (
                       <div key={notif.id} className="bg-black/50 p-4 rounded-lg border border-white/10 group">
                           <div className="flex justify-between items-start mb-2">
@@ -490,6 +546,30 @@ const Dashboard: React.FC = () => {
                           </div>
                           <p className="text-sm text-gray-300 mb-3">{notif.message}</p>
                           
+                          {/* ACTION BUTTONS FOR REGISTRATION REQUEST */}
+                          {notif.type === 'REGISTRATION_REQUEST' && notif.data?.pendingUserId ? (
+                              <div className="flex gap-2 mt-3 animate-in fade-in">
+                                  <Button 
+                                    onClick={() => handleApproveFromNotification(notif.id, notif.data.pendingUserId)} 
+                                    disabled={actionLoading === notif.id}
+                                    className="bg-green-600 hover:bg-green-500 text-xs py-1 h-auto"
+                                  >
+                                      {actionLoading === notif.id ? <Loader2 size={14} className="animate-spin" /> : <><UserCheck size={14} className="mr-1"/> Aprovar Acesso</>}
+                                  </Button>
+                                  <Button 
+                                    onClick={() => handleRejectFromNotification(notif.id, notif.data.pendingUserId)} 
+                                    disabled={actionLoading === notif.id}
+                                    className="bg-red-600 hover:bg-red-500 text-xs py-1 h-auto"
+                                  >
+                                      <XCircle size={14} className="mr-1"/> Rejeitar
+                                  </Button>
+                              </div>
+                          ) : notif.type === 'REGISTRATION_REQUEST' && (
+                              <div className="mt-2 text-xs text-yellow-500 italic bg-yellow-900/20 p-2 rounded">
+                                  Nota: Aprove este usuário manualmente em "Gestão Geral do Sistema" caso os botões não apareçam (notificação antiga).
+                              </div>
+                          )}
+
                           {notif.type === 'PROTOCOL_SUBMISSION' && notif.data && (
                               <div className="space-y-2 mt-2">
                                   <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
