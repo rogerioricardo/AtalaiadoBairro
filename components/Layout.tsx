@@ -14,7 +14,8 @@ import {
   Users,
   User as UserIcon,
   MessageCircle,
-  MessageSquare
+  MessageSquare,
+  FileText
 } from 'lucide-react';
 
 interface LayoutProps {
@@ -123,6 +124,12 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
 
           <NavItem to="/map" icon={MapIcon} label="Mapa Comunitário" />
           <NavItem to="/profile" icon={UserIcon} label="Meu Perfil" />
+          
+          {/* New Help Section */}
+          <div className="mt-8 mb-4 px-4 text-xs font-semibold text-gray-500 uppercase tracking-wider">
+            Ajuda
+          </div>
+          <NavItem to="/docs" icon={FileText} label="Manual do Sistema" />
 
         </nav>
 

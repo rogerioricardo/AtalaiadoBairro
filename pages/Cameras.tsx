@@ -1,5 +1,4 @@
 
-
 import React, { useEffect, useState, useRef } from 'react';
 import Layout from '../components/Layout';
 import { useAuth } from '../context/AuthContext';
@@ -7,10 +6,12 @@ import { UserRole, Neighborhood, CameraProtocol, Plan, Camera } from '../types';
 import { MockService } from '../services/mockService';
 import { PaymentService } from '../services/paymentService';
 import { Card, Button, Input, Modal, Badge } from '../components/UI';
-import { Video, Plus, Code, Eye, Lock, Check, MousePointerClick, Send, MapPin, Search, Trash2, AlertTriangle, Settings, List, ShieldCheck, Info, ChevronDown, Camera as CameraIcon, Maximize2, Minimize2, Edit2, X } from 'lucide-react';
+import { Video, Plus, Code, Eye, Lock, Check, MousePointerClick, Send, MapPin, Search, Trash2, AlertTriangle, Settings, List, ShieldCheck, Info, ChevronDown, Camera as CameraIcon, Maximize2, Minimize2, Edit2, X, RefreshCw } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
 
 const Cameras: React.FC = () => {
-  const { user } = useAuth();
+  const { user, refreshUser } = useAuth();
+  const navigate = useNavigate();
   const [activeTab, setActiveTab] = useState<'view' | 'manage' | 'protocol'>('view');
   
   // Data State
@@ -49,8 +50,21 @@ const Cameras: React.FC = () => {
   // Upgrade Modal State
   const [showUpgradeModal, setShowUpgradeModal] = useState(false);
   const [processingUpgrade, setProcessingUpgrade] = useState<string | null>(null);
+  
+  // Checking State
+  const [verifying, setVerifying] = useState(false);
+  
+  // PLAN LOGIC STATE
+  const [limitedAccessMode, setLimitedAccessMode] = useState(false);
+  const [missingLocation, setMissingLocation] = useState(false);
 
   useEffect(() => {
+    // Se o usuário for FREE ao entrar aqui, tentamos atualizar o perfil silenciosamente
+    // Caso ele tenha acabado de pagar ou sido aprovado pelo admin
+    if (user?.plan === 'FREE' && user?.role === UserRole.RESIDENT) {
+        refreshUser();
+    }
+
     const loadData = async () => {
       // Load Plans for modal
       const availablePlans = await MockService.getPlans();
@@ -68,16 +82,54 @@ const Cameras: React.FC = () => {
       }
     };
     loadData();
-  }, [user, activeTab]); 
+  }, [user?.role, user?.neighborhoodId, activeTab]); 
 
-  // Load cameras when a neighborhood is selected
+  // Load cameras when a neighborhood is selected with PLAN LOGIC
   useEffect(() => {
       const loadCameras = async () => {
+          setLimitedAccessMode(false);
+          setMissingLocation(false);
+
           if (selectedNeighborhood) {
-              const extraCameras = await MockService.getAdditionalCameras(selectedNeighborhood.id);
+              let extraCameras = await MockService.getAdditionalCameras(selectedNeighborhood.id);
+              
+              // --- LÓGICA DE FILTRO POR PLANO ---
+              if (user?.role === UserRole.RESIDENT && user?.plan === 'FAMILY') {
+                  
+                  // Se o usuário tiver localização, ordena por distância
+                  if (user.lat && user.lng) {
+                      const userLat = user.lat;
+                      const userLng = user.lng;
+
+                      const camerasWithDist = extraCameras.map(c => {
+                          // Se a câmera não tem lat/lng, assumimos que está longe (final da fila) ou perto (depende da estratégia). 
+                          // Vamos colocar no final se não tiver coordenada.
+                          let dist = 999999;
+                          if (c.lat && c.lng) {
+                              dist = MockService.calculateDistance(userLat, userLng, c.lat, c.lng);
+                          }
+                          return { ...c, distance: dist };
+                      });
+                      
+                      // Ordena do menor para o maior (mais próximo primeiro)
+                      camerasWithDist.sort((a, b) => a.distance - b.distance);
+                      
+                      // Pega as 3 primeiras
+                      extraCameras = camerasWithDist.slice(0, 3);
+                      setLimitedAccessMode(true);
+                  } else {
+                      // Se o usuário NÃO tiver localização, avisa
+                      setMissingLocation(true);
+                      // Fallback: Mostra as 3 primeiras do array (arbitrário) ou nenhuma
+                      extraCameras = extraCameras.slice(0, 3);
+                      setLimitedAccessMode(true);
+                  }
+              }
+              // SE FOR PREMIUM, ADMIN, INTEGRATOR OU SCR -> VÊ TUDO (extraCameras sem filtro)
+
               setCameras(extraCameras);
           } else if (selectedManageHoodId && activeTab === 'manage') {
-              // Load cameras for management list
+              // Load cameras for management list (No filter needed)
               const extraCameras = await MockService.getAdditionalCameras(selectedManageHoodId);
               setCameras(extraCameras);
           } else {
@@ -89,7 +141,7 @@ const Cameras: React.FC = () => {
       handleCancelCameraEdit();
       
       loadCameras();
-  }, [selectedNeighborhood, selectedManageHoodId, activeTab]);
+  }, [selectedNeighborhood, selectedManageHoodId, activeTab, user]);
 
   const handleCreateNeighborhood = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -271,6 +323,12 @@ const Cameras: React.FC = () => {
       }
   };
 
+  const handleVerifyPermissions = async () => {
+      setVerifying(true);
+      await refreshUser();
+      setTimeout(() => setVerifying(false), 1000);
+  };
+
   // Filter Neighborhoods
   const filteredNeighborhoods = neighborhoods.filter(h => 
       h.name.toLowerCase().includes(searchTerm.toLowerCase())
@@ -430,10 +488,16 @@ const Cameras: React.FC = () => {
                     <p className="text-gray-400 mb-6 max-w-md relative z-10">
                         O monitoramento de câmeras está disponível apenas para os planos Família e Prêmio.
                     </p>
-                    <Button onClick={() => setShowUpgradeModal(true)} className="relative z-10 px-8 py-3">
-                        <ShieldCheck size={18} className="mr-2" />
-                        Fazer Upgrade Agora
-                    </Button>
+                    <div className="flex flex-col gap-3 relative z-10 w-full max-w-xs">
+                        <Button onClick={() => setShowUpgradeModal(true)} className="px-8 py-3">
+                            <ShieldCheck size={18} className="mr-2" />
+                            Fazer Upgrade Agora
+                        </Button>
+                        <Button onClick={handleVerifyPermissions} variant="outline" className="text-xs" disabled={verifying}>
+                            {verifying ? <RefreshCw className="animate-spin mr-2" size={14} /> : <Check className="mr-2" size={14} />}
+                            {verifying ? 'Verificando...' : 'Já sou Premium / Verificar'}
+                        </Button>
+                    </div>
                 </div>
               ) : (
                 <>
@@ -502,6 +566,27 @@ const Cameras: React.FC = () => {
                              )}
                           </div>
                           
+                          {/* LIMITED ACCESS BANNER (Family Plan) */}
+                          {limitedAccessMode && (
+                              <div className="mb-6 p-4 bg-yellow-900/20 border border-yellow-500/30 rounded-lg flex items-center justify-between animate-in slide-in-from-top-2">
+                                  <div className="flex gap-3">
+                                      <div className="p-2 bg-yellow-500/10 rounded-lg text-yellow-500 h-fit">
+                                          <AlertTriangle size={20} />
+                                      </div>
+                                      <div>
+                                          <h4 className="text-yellow-500 font-bold text-sm">Acesso Limitado: Plano Família</h4>
+                                          <p className="text-gray-300 text-xs mt-1">
+                                              Você está visualizando as <strong>3 câmeras mais próximas</strong> da sua localização.
+                                              {missingLocation && <span className="block mt-1 text-red-400 font-bold">⚠️ Configure seu endereço em "Meu Perfil" para ver as câmeras corretas.</span>}
+                                          </p>
+                                      </div>
+                                  </div>
+                                  <Button onClick={() => handleUpgradePlan('PREMIUM')} className="text-xs bg-yellow-600 hover:bg-yellow-500 border-none text-white whitespace-nowrap">
+                                      Upgrade para Prêmio (Ver Todas)
+                                  </Button>
+                              </div>
+                          )}
+
                           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                               {/* Main Camera (Legacy) - Kept for compatibility but optional */}
                               {selectedNeighborhood.iframeUrl && (
@@ -525,7 +610,7 @@ const Cameras: React.FC = () => {
                               {/* Placeholder if no cameras */}
                               {!selectedNeighborhood.iframeUrl && cameras.length === 0 && (
                                   <div className="col-span-2 h-40 flex items-center justify-center border border-dashed border-gray-800 rounded-xl bg-black/20 text-gray-500">
-                                      Nenhuma câmera configurada para este bairro ainda.
+                                      Nenhuma câmera disponível ou configurada para seu plano nesta área.
                                   </div>
                               )}
                           </div>

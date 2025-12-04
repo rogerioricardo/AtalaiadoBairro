@@ -1,7 +1,7 @@
 
 import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { ShieldCheck, Zap, MessageSquare, Users, MapPin, Bell, Clock, BarChart3, MessageCircle, Menu, X, Lock, CreditCard, Smartphone, Download, Printer, Video, Check, Wifi } from 'lucide-react';
+import { ShieldCheck, Zap, MessageSquare, Users, MapPin, Bell, Clock, BarChart3, MessageCircle, Menu, X, Lock, CreditCard, Smartphone, Download, Printer, Video, Check, Wifi, XCircle, FileText } from 'lucide-react';
 import { Button, Modal } from '../components/UI';
 
 const Landing: React.FC = () => {
@@ -69,7 +69,6 @@ const Landing: React.FC = () => {
             <div className="hidden md:flex items-center space-x-8 text-sm font-medium">
               <button onClick={() => scrollToSection('como-funciona')} className="text-gray-300 hover:text-white transition-colors">Como funciona</button>
               <button onClick={() => scrollToSection('funcionalidades')} className="text-gray-300 hover:text-white transition-colors">Funcionalidades</button>
-              <button onClick={() => scrollToSection('whatsapp-demo')} className="text-gray-300 hover:text-white transition-colors">WhatsApp</button>
               <button onClick={() => scrollToSection('planos')} className="text-gray-300 hover:text-white transition-colors">Planos</button>
               <button onClick={() => setPlateModalOpen(true)} className="flex items-center gap-2 text-atalaia-neon hover:text-white transition-colors border border-atalaia-neon/30 px-3 py-1.5 rounded-full hover:bg-atalaia-neon hover:border-atalaia-neon hover:text-black">
                   <Download size={14} /> Baixar Placa
@@ -101,7 +100,6 @@ const Landing: React.FC = () => {
           <div className="md:hidden absolute top-20 left-0 w-full bg-[#0a0a0a] border-b border-white/10 px-4 py-6 flex flex-col gap-4 shadow-2xl animate-in slide-in-from-top-5">
              <button onClick={() => scrollToSection('como-funciona')} className="text-left text-base font-medium text-gray-300 hover:text-atalaia-neon py-2">Como funciona</button>
              <button onClick={() => scrollToSection('funcionalidades')} className="text-left text-base font-medium text-gray-300 hover:text-atalaia-neon py-2">Funcionalidades</button>
-             <button onClick={() => scrollToSection('whatsapp-demo')} className="text-left text-base font-medium text-gray-300 hover:text-atalaia-neon py-2">WhatsApp</button>
              <button onClick={() => scrollToSection('planos')} className="text-left text-base font-medium text-gray-300 hover:text-atalaia-neon py-2">Planos</button>
              <button onClick={() => { setPlateModalOpen(true); setMobileMenuOpen(false); }} className="text-left text-base font-medium text-atalaia-neon py-2 flex items-center gap-2">
                  <Download size={18} /> Baixar Modelo de Placa
@@ -443,13 +441,16 @@ const Landing: React.FC = () => {
                   <span className="text-atalaia-neon">✓</span> Monitoramento básico limitado
                 </li>
                 <li className="flex items-center gap-3 text-gray-300">
+                  <span className="text-atalaia-neon">✓</span> <strong>Notificações no WhatsApp</strong>
+                </li>
+                <li className="flex items-center gap-3 text-gray-500/50">
+                  <XCircle size={16} /> Sem acesso a câmeras ao vivo
+                </li>
+                <li className="flex items-center gap-3 text-gray-300">
                   <span className="text-atalaia-neon">✓</span> Até 5 alertas por mês
                 </li>
                 <li className="flex items-center gap-3 text-gray-300">
                   <span className="text-atalaia-neon">✓</span> Histórico de 7 dias
-                </li>
-                <li className="flex items-center gap-3 text-gray-300">
-                  <span className="text-atalaia-neon">✓</span> Suporte por e-mail
                 </li>
               </ul>
               <button onClick={() => navigate('/login?mode=register&plan=FREE')} className="w-full py-3 rounded-lg border border-white/10 text-white hover:border-atalaia-neon hover:text-atalaia-neon transition-colors text-sm font-medium">
@@ -468,7 +469,10 @@ const Landing: React.FC = () => {
               </div>
               <ul className="space-y-4 mb-8 text-sm">
                 <li className="flex items-center gap-3 text-white">
-                  <span className="text-atalaia-neon">✓</span> Monitoramento básico de segurança
+                  <span className="text-atalaia-neon">✓</span> <strong>Notificações no WhatsApp</strong>
+                </li>
+                <li className="flex items-center gap-3 text-white">
+                  <span className="text-atalaia-neon">✓</span> <strong>Acesso às 3 Câmeras mais próximas (Geo)</strong>
                 </li>
                 <li className="flex items-center gap-3 text-white">
                   <span className="text-atalaia-neon">✓</span> Alertas em tempo real
@@ -481,12 +485,6 @@ const Landing: React.FC = () => {
                 </li>
                 <li className="flex items-center gap-3 text-white">
                   <span className="text-atalaia-neon">✓</span> Histórico de 30 dias
-                </li>
-                <li className="flex items-center gap-3 text-white">
-                  <span className="text-atalaia-neon">✓</span> Prioritário
-                </li>
-                <li className="flex items-center gap-3 text-white">
-                  <span className="text-atalaia-neon">✓</span> Backup em Nuvem
                 </li>
               </ul>
               <Button onClick={() => navigate('/login?mode=register&plan=FAMILY')} className="w-full py-3">
@@ -504,10 +502,13 @@ const Landing: React.FC = () => {
               </div>
               <ul className="space-y-4 mb-8 text-sm">
                 <li className="flex items-center gap-3 text-gray-300">
-                  <span className="text-atalaia-neon">✓</span> Tudo do plano Família
+                  <span className="text-atalaia-neon">✓</span> <strong>Notificações no WhatsApp</strong>
                 </li>
                 <li className="flex items-center gap-3 text-gray-300">
-                  <span className="text-atalaia-neon">✓</span> Câmeras ilimitadas
+                  <span className="text-atalaia-neon">✓</span> <strong>Acesso a TODAS as câmeras do bairro</strong>
+                </li>
+                <li className="flex items-center gap-3 text-gray-300">
+                  <span className="text-atalaia-neon">✓</span> Suporte SCR / Motovigia
                 </li>
                 <li className="flex items-center gap-3 text-gray-300">
                   <span className="text-atalaia-neon">✓</span> IA para detecção de anomalias
@@ -517,9 +518,6 @@ const Landing: React.FC = () => {
                 </li>
                 <li className="flex items-center gap-3 text-gray-300">
                   <span className="text-atalaia-neon">✓</span> Suporte 24 horas por dia
-                </li>
-                <li className="flex items-center gap-3 text-gray-300">
-                  <span className="text-atalaia-neon">✓</span> Integração com sistemas externos
                 </li>
                 <li className="flex items-center gap-3 text-gray-300">
                   <span className="text-atalaia-neon">✓</span> Acesso antecipado a novos recursos
@@ -586,9 +584,9 @@ const Landing: React.FC = () => {
           <div>
             <h4 className="font-bold text-white mb-4">Navegação</h4>
             <ul className="space-y-2 text-xs">
-              <li><a href="#" className="hover:text-atalaia-neon">Como funciona</a></li>
-              <li><a href="#" className="hover:text-atalaia-neon">Funcionalidades</a></li>
-              <li><a href="#" className="hover:text-atalaia-neon">por</a></li>
+              <li><a href="#" onClick={(e) => { e.preventDefault(); scrollToSection('como-funciona'); }} className="hover:text-atalaia-neon">Como funciona</a></li>
+              <li><a href="#" onClick={(e) => { e.preventDefault(); scrollToSection('funcionalidades'); }} className="hover:text-atalaia-neon">Funcionalidades</a></li>
+              <li><a href="#" onClick={(e) => { e.preventDefault(); navigate('/docs'); }} className="hover:text-atalaia-neon flex items-center gap-1"><FileText size={12}/> Documentação / Ajuda</a></li>
             </ul>
           </div>
           <div>
@@ -596,19 +594,19 @@ const Landing: React.FC = () => {
             <ul className="space-y-2 text-xs">
               <li>contato@atalaia.com.br</li>
               <li>(48) 99999-9999</li>
-              <li>Santa Catarina, SC - Brasil</li>
+              <li>São Jose/SC - Brasil</li>
             </ul>
           </div>
           <div>
             <h4 className="font-bold text-white mb-4">Jurídico</h4>
             <ul className="space-y-2 text-xs">
-              <li><a href="#" className="hover:text-atalaia-neon">Termos de serviço</a></li>
-              <li><a href="#" className="hover:text-atalaia-neon">Política de</a></li>
+              <li><button onClick={() => navigate('/terms')} className="hover:text-atalaia-neon text-left">Termos de serviço</button></li>
+              <li><button onClick={() => navigate('/privacy')} className="hover:text-atalaia-neon text-left">Política de Privacidade</button></li>
             </ul>
           </div>
         </div>
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 mt-12 pt-8 border-t border-white/5 text-center text-xs">
-          © 2025 ATALAIA – Segurança Colaborativa. Por Alien Monitoramento Eletrônico Ltada Todos os direitos reservados.
+          © 2025 ATALAIA – Segurança Colaborativa. Por Alien Monitoramento Eletrônico Ltda. Todos os direitos reservados.
         </div>
       </footer>
 

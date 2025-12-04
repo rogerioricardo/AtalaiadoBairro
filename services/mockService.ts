@@ -1,3 +1,4 @@
+
 import { supabase } from '../lib/supabaseClient';
 import { Neighborhood, Alert, CameraProtocol, ChatMessage, UserRole, User, Notification, Plan, ServiceRequest, Camera } from '../types';
 
@@ -75,6 +76,20 @@ const cleanPhoneForWhatsapp = (phone?: string): string | null => {
 };
 
 export const MockService = {
+  // --- GEOLOCATION HELPER (Novo) ---
+  calculateDistance: (lat1: number, lon1: number, lat2: number, lon2: number): number => {
+    const R = 6371; // Raio da Terra em km
+    const dLat = (lat2 - lat1) * (Math.PI / 180);
+    const dLon = (lon2 - lon1) * (Math.PI / 180);
+    const a =
+      Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+      Math.cos(lat1 * (Math.PI / 180)) * Math.cos(lat2 * (Math.PI / 180)) *
+      Math.sin(dLon / 2) * Math.sin(dLon / 2);
+    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+    const d = R * c; // Distância em km
+    return d;
+  },
+
   // --- NEIGHBORHOODS ---
   getNeighborhoods: async (forceRefresh = false): Promise<Neighborhood[]> => {
     // Se já temos em cache e não forçado, retorna cache instantaneamente
@@ -378,9 +393,11 @@ export const MockService = {
     }
 
     // 2. DISPARAR WHATSAPP INDIVIDUAL (BROADCAST) VIA BACKEND
-    // Em vez de enviar para um grupo, vamos buscar todos os vizinhos e enviar 1 a 1.
     (async () => {
         try {
+            // CUSTOMIZAÇÃO PARA SCR (MOTOVIGIA)
+            const isSCR = alert.userRole === UserRole.SCR;
+            
             const emojis: Record<string, string> = {
                 'PANIC': '🚨🚨 PÂNICO',
                 'DANGER': '⚠️⚠️ PERIGO',
@@ -388,7 +405,12 @@ export const MockService = {
                 'OK': '✅ TUDO BEM'
             };
             
-            const title = emojis[alert.type] || 'ALERTA';
+            let title = emojis[alert.type] || 'ALERTA';
+            if (isSCR) {
+                title = `👮 *ALERTA TÁTICO - MOTOVIGIA*\n${title}`;
+            } else {
+                title = `🛡️ *ATALAIA - ALERTA DE SEGURANÇA*\n${title}`;
+            }
             
             // Busca o nome real do bairro para a mensagem
             let locationMsg = '(Global)';
@@ -398,7 +420,7 @@ export const MockService = {
                 else locationMsg = `Bairro ID: ${safeNeighborhoodId.slice(0,4)}...`;
             }
             
-            const waBody = `🛡️ *ATALAIA - ALERTA DE SEGURANÇA*\n\n${title}\n👤 *Solicitante:* ${alert.userName}\n📍 *Local:* ${locationMsg}\n📝 *Relato:* ${alert.message || 'Sem descrição'}\n🕒 *Horário:* ${new Date().toLocaleTimeString()}\n\n🔗 Abra o app para ver: https://atalaia.cloud/#/login`;
+            const waBody = `${title}\n\n👤 *Solicitante:* ${alert.userName}\n📍 *Local:* ${locationMsg}\n📝 *Relato:* ${alert.message || 'Sem descrição'}\n🕒 *Horário:* ${new Date().toLocaleTimeString()}\n\n🔗 Abra o app para ver: https://atalaia.cloud/#/login`;
             
             // --- NOVA LÓGICA DE BROADCAST INDIVIDUAL ---
             let phoneNumbers: string[] = [];
@@ -423,7 +445,7 @@ export const MockService = {
                 await triggerEdgeFunctionAlert(waBody, phoneNumbers);
             } else {
                 console.warn("Nenhum telefone válido encontrado no bairro para broadcast. Enviando para fallback.");
-                await triggerEdgeFunctionAlert(waBody); // Vai para o DEFAULT_DESTINATION da Edge Function
+                await triggerEdgeFunctionAlert(waBody); 
             }
 
         } catch (waError) {
@@ -770,14 +792,46 @@ export const MockService = {
   },
 
   getPlans: async (): Promise<Plan[]> => {
-      const { data } = await supabase.from('plans').select('*').order('price');
-      return (data || []).map(p => ({
-          id: p.id,
-          name: p.name,
-          price: p.price,
-          features: p.features,
-          recommended: p.recommended
-      }));
+      // Retornar hardcoded para garantir que as descrições estejam atualizadas com a lógica de Geo e WhatsApp
+      return [
+          {
+              id: 'FREE',
+              name: 'Gratuito',
+              price: '0,00',
+              features: [
+                  'Monitoramento básico', 
+                  'Notificações no WhatsApp', // Added feature
+                  'Sem acesso a câmeras',     // Added limitation explicit
+                  '5 alertas/mês', 
+                  'Histórico de 7 dias'
+              ]
+          },
+          {
+              id: 'FAMILY',
+              name: 'Família',
+              price: '39,90',
+              features: [
+                  'Acesso às 3 Câmeras mais próximas (Geo)', 
+                  'Notificações no WhatsApp', // Added feature
+                  'Alertas em tempo real', 
+                  'Chat Comunitário', 
+                  'Histórico de 30 dias'
+              ],
+              recommended: true
+          },
+          {
+              id: 'PREMIUM',
+              name: 'Prêmio',
+              price: '79,90',
+              features: [
+                  'Acesso a TODAS as câmeras do bairro',
+                  'Notificações no WhatsApp', // Added feature
+                  'Suporte SCR / Motovigia',
+                  'Prioridade Máxima',
+                  'Tudo do plano Família'
+              ]
+          }
+      ];
   },
 
   updateUserPlan: async (userId: string, planId: string): Promise<void> => {
@@ -815,6 +869,7 @@ export const MockService = {
   registerPatrol: async (userId: string, neighborhoodId: string, note: string, lat?: number, lng?: number, targetUserId?: string): Promise<void> => {
       const safeNeighborhoodId = sanitizeUUID(neighborhoodId);
       
+      // 1. SALVAR LOG NO BANCO
       const { error } = await supabase.from('patrol_logs').insert([{
           user_id: userId,
           neighborhood_id: safeNeighborhoodId,
@@ -829,42 +884,83 @@ export const MockService = {
           throw new Error('Falha ao registrar check-in');
       }
 
+      // 2. ATUALIZAR POSIÇÃO DO SCR
       if (lat && lng) {
           try {
-              await supabase.from('profiles').update({
-                  lat: lat,
-                  lng: lng
-              }).eq('id', userId);
+              await supabase.from('profiles').update({ lat, lng }).eq('id', userId);
           } catch (posError) {
               console.warn("Erro ao atualizar posição do SCR no mapa:", posError);
           }
       }
 
-      if (targetUserId) {
+      // 3. WHATSAPP NOTIFICATIONS (NEW FEATURE)
+      (async () => {
           try {
-              await supabase.from('notifications').insert([{
-                  user_id: targetUserId,
-                  type: 'PATROL_ALERT',
-                  title: 'Aviso do Motovigia (SCR)',
-                  message: `Registro de atividade em sua residência: ${note}`,
-                  from_user_name: 'Equipe Tática',
-                  read: false
-              }]);
-              
-              // Opcional: Avisar morador via WhatsApp também
-              const { data: user } = await supabase.from('profiles').select('phone, name').eq('id', targetUserId).single();
-              if (user && user.phone) {
-                  const phone = cleanPhoneForWhatsapp(user.phone);
-                  if (phone) {
-                      const msg = `👮 *RONDA ATALAIA*\n\nOlá ${user.name}, o Motovigia registrou uma atividade:\n"${note}"\n\n_Verifique o app para mais detalhes._`;
-                      await triggerEdgeFunctionAlert(msg, [phone]);
-                  }
+              // Obter dados do SCR (Operador)
+              const { data: scrProfile } = await supabase.from('profiles').select('name').eq('id', userId).single();
+              const scrName = scrProfile?.name || 'Motovigia';
+
+              // Obter nome do Bairro
+              let hoodName = 'Bairro';
+              if (safeNeighborhoodId) {
+                  const { data: h } = await supabase.from('neighborhoods').select('name').eq('id', safeNeighborhoodId).single();
+                  if (h) hoodName = h.name;
               }
 
-          } catch (notifError) {
-              console.warn("Erro ao notificar morador, mas log foi salvo:", notifError);
+              // --- CENÁRIO A: CHECK-IN VIP EM MORADOR ESPECÍFICO ---
+              if (targetUserId) {
+                  const { data: user } = await supabase.from('profiles').select('phone, name').eq('id', targetUserId).single();
+                  if (user && user.phone) {
+                      const phone = cleanPhoneForWhatsapp(user.phone);
+                      if (phone) {
+                          const msg = `👮 *RONDA TÁTICA - ATALAIA*\n\nOlá ${user.name}, o operador *${scrName}* registrou uma atividade relacionada à sua residência.\n\n📝 *Registro:* ${note}\n📍 *Local:* ${hoodName}\n🕒 *Horário:* ${new Date().toLocaleTimeString()}\n\n_Verifique o app para mais detalhes._`;
+                          await triggerEdgeFunctionAlert(msg, [phone]);
+                      }
+                  }
+                  return; // Sai se for VIP, não manda para geral
+              }
+
+              // --- CENÁRIO B: OCORRÊNCIAS GERAIS (Luz, Portão, Suspeita) ---
+              
+              // Se for "VIOLAÇÃO" ou "SUSPEITO" -> BROADCAST PARA VIZINHOS (CRÍTICO)
+              const isCritical = note.toUpperCase().includes("VIOLAÇÃO") || note.toUpperCase().includes("SUSPEITO") || note.toUpperCase().includes("VEÍCULO");
+              
+              // Se for Manutenção (Luz, Portão) -> Apenas ADMINS / INTEGRADOR
+              const isMaintenance = note.toUpperCase().includes("LUZ") || note.toUpperCase().includes("PORTÃO") || note.toUpperCase().includes("LÂMPADA");
+
+              if (isCritical && safeNeighborhoodId) {
+                   const { data: neighbors } = await supabase
+                      .from('profiles')
+                      .select('phone')
+                      .eq('neighborhood_id', safeNeighborhoodId)
+                      .neq('id', userId); // Não manda pro próprio SCR
+
+                   const phones = (neighbors || []).map(u => cleanPhoneForWhatsapp(u.phone)).filter(p => p !== null) as string[];
+                   
+                   if (phones.length > 0) {
+                       const msg = `⚠️ *ALERTA DA RONDA - ATALAIA*\n\nO operador *${scrName}* identificou uma situação no bairro *${hoodName}*.\n\n📝 *Relato:* ${note}\n🕒 *Horário:* ${new Date().toLocaleTimeString()}\n\n_Fiquem atentos._`;
+                       await triggerEdgeFunctionAlert(msg, phones);
+                   }
+
+              } else if (isMaintenance && safeNeighborhoodId) {
+                   // Busca Admins e Integradores deste bairro
+                   const { data: staff } = await supabase
+                      .from('profiles')
+                      .select('phone')
+                      .or(`role.eq.ADMIN,and(role.eq.INTEGRATOR,neighborhood_id.eq.${safeNeighborhoodId})`);
+
+                   const staffPhones = (staff || []).map(u => cleanPhoneForWhatsapp(u.phone)).filter(p => p !== null) as string[];
+
+                   if (staffPhones.length > 0) {
+                        const msg = `🛠️ *MANUTENÇÃO - ATALAIA*\n\nO Motovigia reportou um problema em *${hoodName}*.\n\n📝 *Item:* ${note}\n👤 *Operador:* ${scrName}`;
+                        await triggerEdgeFunctionAlert(msg, staffPhones);
+                   }
+              }
+
+          } catch (waError) {
+              console.error("Erro no envio de WA do SCR:", waError);
           }
-      }
+      })();
   },
 
   createServiceRequest: async (userId: string, userName: string, neighborhoodId: string, type: 'ESCORT' | 'EXTRA_ROUND' | 'TRAVEL_NOTICE'): Promise<void> => {
