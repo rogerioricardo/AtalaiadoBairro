@@ -278,6 +278,9 @@ const Dashboard: React.FC = () => {
   const [processingDonation, setProcessingDonation] = useState(false);
   const [actionLoading, setActionLoading] = useState<string | null>(null);
 
+  // Service Request Loading State
+  const [requestLoading, setRequestLoading] = useState<string | null>(null);
+
   // Upgrade Modal for SCR feature
   const [showSCRUpgradeModal, setShowSCRUpgradeModal] = useState(false);
   
@@ -398,11 +401,14 @@ const Dashboard: React.FC = () => {
       }
 
       if (window.confirm("Confirmar solicitação ao Motovigia?")) {
+          setRequestLoading(type);
           try {
               await MockService.createServiceRequest(user.id, user.name, user.neighborhoodId, type);
-              alert("Solicitação enviada ao SCR com sucesso!");
+              showFeedback("Solicitação enviada via WhatsApp para a Equipe Tática!", 'success');
           } catch (e) {
-              alert("Erro ao enviar solicitação.");
+              showFeedback("Erro ao enviar solicitação.", 'error');
+          } finally {
+              setRequestLoading(null);
           }
       }
   };
@@ -499,14 +505,14 @@ const Dashboard: React.FC = () => {
                 Como assinante Prêmio, você tem acesso direto à equipe de Motovigia (SCR) para serviços exclusivos.
             </p>
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                 <Button onClick={() => handleRequestService('ESCORT')} className="bg-yellow-600/20 border border-yellow-500/50 hover:bg-yellow-600/40 text-yellow-500 font-bold">
-                     <Shield size={18} className="mr-2"/> Solicitar Escolta
+                 <Button onClick={() => handleRequestService('ESCORT')} disabled={!!requestLoading} className="bg-yellow-600/20 border border-yellow-500/50 hover:bg-yellow-600/40 text-yellow-500 font-bold">
+                     {requestLoading === 'ESCORT' ? <Loader2 className="animate-spin mr-2" size={18} /> : <Shield size={18} className="mr-2"/>} Solicitar Escolta
                  </Button>
-                 <Button onClick={() => handleRequestService('EXTRA_ROUND')} className="bg-yellow-600/20 border border-yellow-500/50 hover:bg-yellow-600/40 text-yellow-500 font-bold">
-                     <Navigation size={18} className="mr-2"/> Ronda Extra no Local
+                 <Button onClick={() => handleRequestService('EXTRA_ROUND')} disabled={!!requestLoading} className="bg-yellow-600/20 border border-yellow-500/50 hover:bg-yellow-600/40 text-yellow-500 font-bold">
+                     {requestLoading === 'EXTRA_ROUND' ? <Loader2 className="animate-spin mr-2" size={18} /> : <Navigation size={18} className="mr-2"/>} Ronda Extra no Local
                  </Button>
-                 <Button onClick={() => handleRequestService('TRAVEL_NOTICE')} className="bg-yellow-600/20 border border-yellow-500/50 hover:bg-yellow-600/40 text-yellow-500 font-bold">
-                     <MapPin size={18} className="mr-2"/> Aviso de Viagem
+                 <Button onClick={() => handleRequestService('TRAVEL_NOTICE')} disabled={!!requestLoading} className="bg-yellow-600/20 border border-yellow-500/50 hover:bg-yellow-600/40 text-yellow-500 font-bold">
+                     {requestLoading === 'TRAVEL_NOTICE' ? <Loader2 className="animate-spin mr-2" size={18} /> : <MapPin size={18} className="mr-2"/>} Aviso de Viagem
                  </Button>
             </div>
         </Card>

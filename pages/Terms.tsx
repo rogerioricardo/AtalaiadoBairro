@@ -1,17 +1,19 @@
 
 import React from 'react';
 import { useNavigate } from 'react-router-dom';
+import { useAuth } from '../context/AuthContext';
 import { ShieldCheck, ArrowLeft, AlertTriangle, FileText } from 'lucide-react';
 import { Button, Card } from '../components/UI';
 
 const Terms: React.FC = () => {
   const navigate = useNavigate();
+  const { user } = useAuth();
 
   return (
     <div className="min-h-screen bg-[#050505] text-gray-300 font-sans p-6 md:p-12">
       <div className="max-w-4xl mx-auto">
-        <Button variant="outline" onClick={() => navigate('/')} className="mb-8 text-xs">
-            <ArrowLeft size={14} className="mr-2" /> Voltar ao Início
+        <Button variant="outline" onClick={() => navigate(user ? '/dashboard' : '/')} className="mb-8 text-xs">
+            <ArrowLeft size={14} className="mr-2" /> {user ? 'Voltar ao Painel' : 'Voltar ao Início'}
         </Button>
 
         <div className="flex items-center gap-3 mb-8">

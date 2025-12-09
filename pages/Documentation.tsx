@@ -1,6 +1,7 @@
 
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { useAuth } from '../context/AuthContext';
 import { 
     ShieldCheck, Users, Video, Bell, MessageCircle, MapPin, 
     Smartphone, CreditCard, Lock, ArrowLeft, Star, 
@@ -10,6 +11,7 @@ import { Button, Card, Badge } from '../components/UI';
 
 const Documentation: React.FC = () => {
     const navigate = useNavigate();
+    const { user } = useAuth();
     const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
     const scrollToSection = (id: string) => {
@@ -58,8 +60,8 @@ const Documentation: React.FC = () => {
                             </div>
                             <h1 className="font-bold text-xl text-white">Documentação</h1>
                         </div>
-                        <Button variant="outline" onClick={() => navigate('/')} className="w-full text-xs mb-6">
-                            <ArrowLeft size={14} className="mr-2" /> Voltar ao Site
+                        <Button variant="outline" onClick={() => navigate(user ? '/dashboard' : '/')} className="w-full text-xs mb-6">
+                            <ArrowLeft size={14} className="mr-2" /> {user ? 'Voltar ao Painel' : 'Voltar ao Site'}
                         </Button>
                     </div>
 

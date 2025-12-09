@@ -6,7 +6,7 @@ import { UserRole, Neighborhood, CameraProtocol, Plan, Camera } from '../types';
 import { MockService } from '../services/mockService';
 import { PaymentService } from '../services/paymentService';
 import { Card, Button, Input, Modal, Badge } from '../components/UI';
-import { Video, Plus, Code, Eye, Lock, Check, MousePointerClick, Send, MapPin, Search, Trash2, AlertTriangle, Settings, List, ShieldCheck, Info, ChevronDown, Camera as CameraIcon, Maximize2, Minimize2, Edit2, X, RefreshCw } from 'lucide-react';
+import { Video, Plus, Code, Eye, Lock, Check, MousePointerClick, Send, MapPin, Search, Trash2, AlertTriangle, Settings, List, ShieldCheck, Info, ChevronDown, Camera as CameraIcon, Maximize2, Minimize2, Edit2, X, RefreshCw, RotateCw } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 
 const Cameras: React.FC = () => {
@@ -344,10 +344,15 @@ const Cameras: React.FC = () => {
   const UniversalPlayer = ({ url }: { url: string }) => {
     const containerRef = useRef<HTMLDivElement>(null);
     const [isFullscreen, setIsFullscreen] = useState(false);
+    const [isRotated, setIsRotated] = useState(false);
 
     useEffect(() => {
         const onFullscreenChange = () => {
-            setIsFullscreen(!!document.fullscreenElement);
+            const isFull = !!document.fullscreenElement;
+            setIsFullscreen(isFull);
+            if (!isFull) {
+                setIsRotated(false); // Reset rotation when exiting fullscreen
+            }
         };
         document.addEventListener('fullscreenchange', onFullscreenChange);
         return () => document.removeEventListener('fullscreenchange', onFullscreenChange);
@@ -385,37 +390,57 @@ const Cameras: React.FC = () => {
         }
     };
 
+    const toggleRotation = () => {
+        setIsRotated(!isRotated);
+    };
+
     if (!url) return null;
 
     // Detect if input is raw HTML (iframe tag)
     const isRawHtml = url.trim().startsWith('<iframe') || url.trim().startsWith('<div');
     const isDirectVideo = url.match(/\.(mp4|webm|ogg|m3u8)$/i);
     
+    // Classes CSS para rotação manual (Força modo Paisagem em mobile)
+    const contentClasses = isRotated
+        ? "fixed top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[100vh] h-[100vw] rotate-90 z-10 bg-black"
+        : "w-full h-full";
+
     return (
         <div 
             ref={containerRef}
             className={`w-full bg-black overflow-hidden border border-atalaia-border relative shadow-[0_0_30px_rgba(0,0,0,0.5)] aspect-video group ${isFullscreen ? 'flex items-center justify-center' : 'rounded-xl'}`}
         >
-             {isRawHtml ? (
-                 <div 
-                    className="w-full h-full [&>iframe]:w-full [&>iframe]:h-full [&>iframe]:border-0"
-                    dangerouslySetInnerHTML={{ __html: url }}
-                 />
-             ) : isDirectVideo ? (
-                 <video src={url} controls autoPlay muted loop className="w-full h-full object-cover" />
-             ) : (
-                <iframe 
-                    src={url}
-                    className="w-full h-full bg-black"
-                    frameBorder="0"
-                    allowFullScreen
-                    allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
-                    title="Camera Feed"
-                />
-             )}
+             <div className={contentClasses}>
+                {isRawHtml ? (
+                    <div 
+                        className="w-full h-full [&>iframe]:w-full [&>iframe]:h-full [&>iframe]:border-0"
+                        dangerouslySetInnerHTML={{ __html: url }}
+                    />
+                ) : isDirectVideo ? (
+                    <video src={url} controls autoPlay muted loop className="w-full h-full object-cover" />
+                ) : (
+                    <iframe 
+                        src={url}
+                        className="w-full h-full bg-black"
+                        frameBorder="0"
+                        allowFullScreen
+                        allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                        title="Camera Feed"
+                    />
+                )}
+             </div>
              
-             {/* Controls Overlay - ICON ONLY, NO TEXT */}
+             {/* Controls Overlay */}
              <div className="absolute top-0 right-0 p-2 opacity-0 group-hover:opacity-100 transition-opacity flex items-center gap-2 z-50">
+                 {/* Rotate Button (Available even if not fullscreen to force rotation inside container if desired, but here we focus on UX inside container) */}
+                 <button 
+                    onClick={toggleRotation}
+                    className={`p-2 rounded-lg backdrop-blur-sm transition-all shadow-lg ${isRotated ? 'bg-atalaia-neon text-black' : 'bg-black/70 text-white hover:bg-atalaia-neon hover:text-black'}`}
+                    title={isRotated ? "Restaurar Rotação" : "Girar Tela (Horizontal)"}
+                 >
+                    <RotateCw size={20} />
+                 </button>
+
                  {/* Fullscreen Button */}
                  <button 
                     onClick={toggleFullscreen}
@@ -427,7 +452,7 @@ const Cameras: React.FC = () => {
              </div>
 
              {/* Live indicator */}
-             <div className="absolute top-4 left-4 pointer-events-none z-40">
+             <div className={`absolute top-4 left-4 pointer-events-none z-40 ${isRotated ? 'hidden' : ''}`}>
                  <div className="bg-red-600 text-white text-[10px] font-bold px-2 py-1 rounded animate-pulse shadow-lg flex items-center gap-1">
                     <div className="w-2 h-2 bg-white rounded-full" />
                     AO VIVO

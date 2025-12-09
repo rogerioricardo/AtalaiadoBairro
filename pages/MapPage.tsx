@@ -1,5 +1,4 @@
 
-
 import React, { useEffect, useState } from 'react';
 import Layout from '../components/Layout';
 import { MapContainer, TileLayer, Marker, Popup, useMap } from 'react-leaflet';
@@ -7,7 +6,7 @@ import { MockService } from '../services/mockService';
 import { User, Neighborhood, UserRole, Camera } from '../types';
 import L from 'leaflet';
 import { useAuth } from '../context/AuthContext';
-import { Layers, Sun, Moon, Globe, Video, MapPin } from 'lucide-react';
+import { Video, MapPin, Globe } from 'lucide-react';
 
 // Fix Leaflet Default Icon in React using CDN URLs
 const iconUrl = 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon.png';
@@ -51,26 +50,9 @@ const MotoIcon = L.divIcon({
     iconAnchor: [16, 16]
 });
 
-const MAP_STYLES = {
-    dark: {
-        name: 'Escuro',
-        url: 'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png',
-        attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/attributions">CARTO</a>',
-        icon: Moon
-    },
-    light: {
-        name: 'Claro',
-        url: 'https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png',
-        attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/attributions">CARTO</a>',
-        icon: Sun
-    },
-    satellite: {
-        name: 'Satélite',
-        url: 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
-        attribution: 'Tiles &copy; Esri &mdash; Source: Esri, i-cubed, USDA, USGS, AEX, GeoEye, Getmapping, Aerogrid, IGN, IGP, UPR-EGP, and the GIS User Community',
-        icon: Globe
-    }
-};
+// SATELLITE ONLY CONFIGURATION
+const SATELLITE_URL = 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}';
+const SATELLITE_ATTRIBUTION = 'Tiles &copy; Esri &mdash; Source: Esri, i-cubed, USDA, USGS, AEX, GeoEye, Getmapping, Aerogrid, IGN, IGP, UPR-EGP, and the GIS User Community';
 
 const MapResizer = () => {
     const map = useMap();
@@ -88,7 +70,6 @@ const MapPage: React.FC = () => {
   const [users, setUsers] = useState<User[]>([]);
   const [neighborhoods, setNeighborhoods] = useState<Neighborhood[]>([]);
   const [cameras, setCameras] = useState<Camera[]>([]);
-  const [currentLayer, setCurrentLayer] = useState<keyof typeof MAP_STYLES>('dark');
   
   const centerPos: [number, number] = user?.lat && user?.lng ? [user.lat, user.lng] : [-27.5969, -48.5495];
 
@@ -124,6 +105,10 @@ const MapPage: React.FC = () => {
                 <h1 className="text-3xl font-bold text-white">Mapa Comunitário</h1>
                 <p className="text-gray-400">Visualize a rede de proteção e câmeras em tempo real.</p>
             </div>
+            {/* Satellite Badge Indicator */}
+            <div className="flex items-center gap-2 px-3 py-1 bg-blue-900/30 border border-blue-500/30 rounded-lg text-blue-300 text-xs font-bold uppercase tracking-wider">
+                <Globe size={14} /> Modo Satélite
+            </div>
         </div>
 
         <div className="flex-1 rounded-xl overflow-hidden border border-atalaia-border shadow-2xl relative z-0 group">
@@ -134,10 +119,10 @@ const MapPage: React.FC = () => {
                 scrollWheelZoom={true}
             >
                 <MapResizer />
+                {/* FORCED SATELLITE LAYER */}
                 <TileLayer
-                    key={currentLayer}
-                    attribution={MAP_STYLES[currentLayer].attribution}
-                    url={MAP_STYLES[currentLayer].url}
+                    attribution={SATELLITE_ATTRIBUTION}
+                    url={SATELLITE_URL}
                 />
 
                 {/* User Markers */}
@@ -194,31 +179,6 @@ const MapPage: React.FC = () => {
                 ))}
 
             </MapContainer>
-
-            {/* Map Style Controller */}
-            <div className="absolute top-4 right-4 bg-black/90 backdrop-blur border border-white/20 p-2 rounded-lg z-[1000] shadow-xl flex flex-col gap-2">
-                <span className="text-[10px] uppercase font-bold text-gray-500 px-2 mb-1 flex items-center gap-1">
-                    <Layers size={10} /> Camadas
-                </span>
-                {(Object.keys(MAP_STYLES) as Array<keyof typeof MAP_STYLES>).map((styleKey) => {
-                    const StyleIcon = MAP_STYLES[styleKey].icon;
-                    const isActive = currentLayer === styleKey;
-                    return (
-                        <button
-                            key={styleKey}
-                            onClick={() => setCurrentLayer(styleKey)}
-                            className={`flex items-center gap-2 px-3 py-2 rounded text-xs font-medium transition-all ${
-                                isActive 
-                                ? 'bg-atalaia-neon text-black shadow-[0_0_10px_rgba(0,255,102,0.3)]' 
-                                : 'text-gray-300 hover:bg-white/10'
-                            }`}
-                        >
-                            <StyleIcon size={14} />
-                            {MAP_STYLES[styleKey].name}
-                        </button>
-                    );
-                })}
-            </div>
 
             {/* Overlay Legend */}
             <div className="absolute bottom-6 left-6 bg-black/80 backdrop-blur-md p-4 rounded-lg border border-white/10 z-[1000] text-xs pointer-events-none">

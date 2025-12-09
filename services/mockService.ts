@@ -1,4 +1,3 @@
-
 import { supabase } from '../lib/supabaseClient';
 import { Neighborhood, Alert, CameraProtocol, ChatMessage, UserRole, User, Notification, Plan, ServiceRequest, Camera } from '../types';
 
@@ -409,7 +408,7 @@ export const MockService = {
             if (isSCR) {
                 title = `👮 *ALERTA TÁTICO - MOTOVIGIA*\n${title}`;
             } else {
-                title = `🛡️ *ATALAIA - ALERTA DE SEGURANÇA*\n${title}`;
+                title = `🛡️ *ATALAIA SEGURANÇA COLABORATIVA*\n${title}`;
             }
             
             // Busca o nome real do bairro para a mensagem
@@ -417,10 +416,19 @@ export const MockService = {
             if (safeNeighborhoodId) {
                 const { data: hood } = await supabase.from('neighborhoods').select('name').eq('id', safeNeighborhoodId).single();
                 if (hood) locationMsg = `Bairro ${hood.name}`;
-                else locationMsg = `Bairro ID: ${safeNeighborhoodId.slice(0,4)}...`;
+                else locationMsg = `Identificação do Bairro: ${safeNeighborhoodId.slice(0,4)}...`;
             }
             
-            const waBody = `${title}\n\n👤 *Solicitante:* ${alert.userName}\n📍 *Local:* ${locationMsg}\n📝 *Relato:* ${alert.message || 'Sem descrição'}\n🕒 *Horário:* ${new Date().toLocaleTimeString()}\n\n🔗 Abra o app para ver: https://atalaia.cloud/#/login`;
+            // Tradução de Perfil
+            const roleMap: Record<string, string> = {
+                'RESIDENT': 'Morador',
+                'ADMIN': 'Administrador',
+                'SCR': 'Motovigia',
+                'INTEGRATOR': 'Integrador'
+            };
+            const displayRole = alert.userRole ? (roleMap[alert.userRole] || alert.userRole) : 'Usuário';
+
+            const waBody = `${title}\n\n👤 *Solicitante:* ${alert.userName} (${displayRole})\n📍 *Local:* ${locationMsg}\n📝 *Relato:* ${alert.message || 'Sem descrição'}\n🕒 *Horário:* ${new Date().toLocaleTimeString()}\n\n🔗 Abra o app para ver: https://atalaia.cloud/#/login`;
             
             // --- NOVA LÓGICA DE BROADCAST INDIVIDUAL ---
             let phoneNumbers: string[] = [];
@@ -574,7 +582,12 @@ export const MockService = {
   notifyAdmins: async (newUserName: string, role: string, neighborhoodName: string) => {
       try {
           const { data: admins } = await supabase.from('profiles').select('phone').eq('role', 'ADMIN');
-          const msg = `🔔 *ATALAIA - NOVO CADASTRO*\n\n👤 *Nome:* ${newUserName}\n🛡️ *Perfil:* ${role}\n📍 *Bairro:* ${neighborhoodName}\n\n🔗 https://atalaia.cloud/#/integrator/users`;
+          
+          // Translate role for msg
+          const roleMap: Record<string, string> = { 'RESIDENT': 'Morador', 'SCR': 'Motovigia', 'INTEGRATOR': 'Integrador' };
+          const ptRole = roleMap[role] || role;
+
+          const msg = `🔔 *ATALAIA - NOVO CADASTRO*\n\n👤 *Nome:* ${newUserName}\n🛡️ *Perfil:* ${ptRole}\n📍 *Bairro:* ${neighborhoodName}\n\n🔗 https://atalaia.cloud/#/integrator/users`;
 
           let adminPhones: string[] = [];
           
@@ -602,7 +615,7 @@ export const MockService = {
       try {
           const phone = cleanPhoneForWhatsapp(user.phone);
           if (phone) {
-              const msg = `🔐 *ATALAIA SECURITY*\n\nOlá ${user.name}, detectamos um novo acesso à sua conta agora.\n📅 *Data:* ${new Date().toLocaleString()}\n\n_Se não foi você, contate o administrador imediatamente._`;
+              const msg = `🔐 *ATALAIA SEGURANÇA COLABORATIVA*\n\nOlá ${user.name}, detectamos um novo acesso à sua conta agora.\n📅 *Data:* ${new Date().toLocaleString()}\n\n_Se não foi você, contate o administrador imediatamente._`;
               await triggerEdgeFunctionAlert(msg, [phone]);
           }
       } catch (e) {
@@ -980,6 +993,10 @@ export const MockService = {
       }
       
       try {
+          // Busca endereço do morador para incluir na msg
+          const { data: userProfile } = await supabase.from('profiles').select('address').eq('id', userId).single();
+          const userAddress = userProfile?.address || 'Endereço não cadastrado';
+
           const scrs = await MockService.getNeighborhoodSCRs(safeNeighborhoodId || '');
           const notifs = scrs.map(scr => ({
               user_id: scr.id,
@@ -989,16 +1006,33 @@ export const MockService = {
               from_user_name: userName
           }));
 
+          // Mapa de tradução
+          const typeMap: Record<string, string> = {
+              'ESCORT': 'ESCOLTA (Acompanhamento)',
+              'EXTRA_ROUND': 'RONDA EXTRA NO LOCAL',
+              'TRAVEL_NOTICE': 'AVISO DE VIAGEM'
+          };
+          const ptType = typeMap[type] || type;
+          const msg = `⭐ *SOLICITAÇÃO VIP - ATALAIA*\n\nO morador *${userName}* solicitou um serviço exclusivo.\n\n🛠️ *Tipo:* ${ptType}\n📍 *Local:* ${userAddress}\n🕒 *Horário:* ${new Date().toLocaleTimeString()}\n\n_Verifique o Painel Tático imediatamente._`;
+
           if (notifs.length > 0) {
               const { error: notifError } = await supabase.from('notifications').insert(notifs);
               if(notifError) console.error("Erro notificando SCR:", notifError);
               
               // Notifica SCRs via WhatsApp
               const scrPhones = scrs.map(s => cleanPhoneForWhatsapp(s.phone)).filter(p => p !== null) as string[];
+              
               if (scrPhones.length > 0) {
-                  const msg = `⭐ *SOLICITAÇÃO VIP*\n\nO morador ${userName} solicitou: *${type}*.\nVerifique o Painel Tático imediatamente.`;
                   await triggerEdgeFunctionAlert(msg, scrPhones);
+              } else {
+                  // Fallback: Se tiver SCRs mas sem telefone, manda para o grupo
+                  console.warn("SCRs encontrados mas sem telefone cadastrado. Enviando para grupo.");
+                  await triggerEdgeFunctionAlert(msg);
               }
+          } else {
+              // Fallback Critical: Se NÃO EXISTEM SCRs no bairro, manda para o grupo/admin para não perder o pedido
+              console.warn("Nenhum SCR encontrado no bairro. Enviando solicitação VIP para grupo de alerta (Fallback).");
+              await triggerEdgeFunctionAlert(msg);
           }
       } catch (err) {
           console.error("Falha no fluxo de notificação SCR:", err);

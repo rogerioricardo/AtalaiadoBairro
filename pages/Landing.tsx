@@ -1,7 +1,7 @@
 
 import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { ShieldCheck, Zap, MessageSquare, Users, MapPin, Bell, Clock, BarChart3, MessageCircle, Menu, X, Lock, CreditCard, Smartphone, Download, Printer, Video, Check, Wifi, XCircle, FileText } from 'lucide-react';
+import { ShieldCheck, Zap, MessageSquare, Users, MapPin, Bell, Clock, BarChart3, MessageCircle, Menu, X, Lock, CreditCard, Smartphone, Download, Printer, Video, Check, Wifi, XCircle, FileText, Scan, AlertTriangle } from 'lucide-react';
 import { Button, Modal } from '../components/UI';
 
 const Landing: React.FC = () => {
@@ -71,7 +71,7 @@ const Landing: React.FC = () => {
               <button onClick={() => scrollToSection('funcionalidades')} className="text-gray-300 hover:text-white transition-colors">Funcionalidades</button>
               <button onClick={() => scrollToSection('planos')} className="text-gray-300 hover:text-white transition-colors">Planos</button>
               <button onClick={() => setPlateModalOpen(true)} className="flex items-center gap-2 text-atalaia-neon hover:text-white transition-colors border border-atalaia-neon/30 px-3 py-1.5 rounded-full hover:bg-atalaia-neon hover:border-atalaia-neon hover:text-black">
-                  <Download size={14} /> Baixar Placa
+                  <Printer size={14} /> Imprimir Placa
               </button>
             </div>
             
@@ -102,7 +102,7 @@ const Landing: React.FC = () => {
              <button onClick={() => scrollToSection('funcionalidades')} className="text-left text-base font-medium text-gray-300 hover:text-atalaia-neon py-2">Funcionalidades</button>
              <button onClick={() => scrollToSection('planos')} className="text-left text-base font-medium text-gray-300 hover:text-atalaia-neon py-2">Planos</button>
              <button onClick={() => { setPlateModalOpen(true); setMobileMenuOpen(false); }} className="text-left text-base font-medium text-atalaia-neon py-2 flex items-center gap-2">
-                 <Download size={18} /> Baixar Modelo de Placa
+                 <Printer size={18} /> Imprimir Placa de Segurança
              </button>
              <hr className="border-white/10 my-2" />
              <Button onClick={handleLogin} variant="primary" className="w-full justify-center py-3 font-bold">
@@ -610,7 +610,7 @@ const Landing: React.FC = () => {
         </div>
       </footer>
 
-      {/* MODAL DE PLACA DE SEGURANÇA */}
+      {/* MODAL DE PLACA DE SEGURANÇA - VERSÃO CYBERPUNK */}
       <Modal isOpen={plateModalOpen} onClose={() => setPlateModalOpen(false)}>
           {/* Print CSS Injection */}
           <style>{`
@@ -618,95 +618,131 @@ const Landing: React.FC = () => {
               body * {
                 visibility: hidden;
               }
-              #security-plate, #security-plate * {
+              #security-plate-container, #security-plate-container * {
                 visibility: visible;
               }
-              #security-plate {
+              #security-plate-container {
                 position: fixed;
-                left: 50%;
-                top: 50%;
-                transform: translate(-50%, -50%);
-                width: 100%;
-                max-width: 20cm; /* Approx size */
-                height: auto;
-                margin: 0;
-                padding: 2rem;
+                left: 0;
+                top: 0;
+                width: 100vw;
+                height: 100vh;
+                display: flex;
+                align-items: center;
+                justify-content: center;
                 background-color: black !important;
-                -webkit-print-color-adjust: exact;
-                print-color-adjust: exact;
-                z-index: 9999;
-                border: 6px solid #00FF66 !important;
+                margin: 0;
+                padding: 0;
+                z-index: 999999;
+              }
+              /* Força a impressão de cores de fundo (backgrounds) */
+              * {
+                -webkit-print-color-adjust: exact !important;
+                print-color-adjust: exact !important;
+                color-adjust: exact !important;
               }
             }
           `}</style>
 
-          <div className="flex flex-col items-center justify-center p-8 bg-[#0a0a0a]">
-              <h2 className="text-2xl font-bold text-white mb-2 print:hidden">Modelo de Placa</h2>
-              <p className="text-gray-400 text-sm mb-4 text-center print:hidden">
-                  Utilize este design para imprimir em placas de PS ou Metal.
+          <div className="flex flex-col items-center justify-center p-8 bg-[#0a0a0a] min-h-[500px]">
+              <h2 className="text-2xl font-bold text-white mb-2 print:hidden flex items-center gap-2">
+                  <ShieldCheck className="text-atalaia-neon"/> Modelo de Placa
+              </h2>
+              <p className="text-gray-400 text-sm mb-4 text-center print:hidden max-w-md">
+                  Design oficial para impressão em PS, Metal ou PVC. Utilize o botão abaixo para imprimir diretamente.
               </p>
               
               <div className="mb-6 flex items-center justify-center gap-2 bg-atalaia-neon/10 border border-atalaia-neon/30 text-atalaia-neon px-4 py-2 rounded-lg text-xs font-bold uppercase tracking-wider print:hidden">
-                  ⚠ Padrão de Impressão: 20cm x 30cm (Proporção 2:3)
+                  <AlertTriangle size={14} /> Dimensão Recomendada: 20cm x 30cm
               </div>
 
-              {/* AREA DE IMPRESSÃO - PLACA FUTURISTA 20x30cm (2:3 aspect) */}
-              <div 
-                  id="security-plate"
-                  className="w-full max-w-[300px] aspect-[2/3] bg-black border-[6px] border-atalaia-neon rounded-xl flex flex-col items-center justify-between p-6 relative shadow-[0_0_60px_rgba(0,255,102,0.2)] overflow-hidden"
-              >
-                  {/* Scanline Effect - hidden in print usually but kept just in case */}
-                  <div className="absolute inset-0 bg-[linear-gradient(transparent_50%,rgba(0,255,102,0.05)_50%)] bg-[length:100%_4px] pointer-events-none print:hidden" />
-                  
-                  {/* Top Warning */}
-                  <div className="w-full text-center relative z-10 mt-2">
-                      <div className="inline-block bg-atalaia-neon text-black font-black text-lg px-6 py-1 rounded-sm mb-3 tracking-[0.2em] uppercase transform -skew-x-12 print:bg-[#00FF66]">
-                          ATENÇÃO
-                      </div>
-                      <h3 className="text-white font-black text-3xl uppercase tracking-tighter leading-none mb-2">ÁREA<br/><span className="text-atalaia-neon text-4xl">PROTEGIDA</span></h3>
-                  </div>
+              {/* AREA DE IMPRESSÃO - NOVA PLACA CYBERPUNK */}
+              <div id="security-plate-container">
+                  <div 
+                      className="w-full max-w-[320px] aspect-[2/3] bg-black border-[6px] border-atalaia-neon flex flex-col relative shadow-[0_0_60px_rgba(0,255,102,0.15)] overflow-hidden"
+                  >
+                    {/* Cyber Grid Background */}
+                    <div className="absolute inset-0 opacity-20 pointer-events-none" 
+                          style={{ 
+                              backgroundImage: 'linear-gradient(rgba(0,255,102,0.3) 1px, transparent 1px), linear-gradient(90deg, rgba(0,255,102,0.3) 1px, transparent 1px)', 
+                              backgroundSize: '20px 20px' 
+                          }} 
+                    />
+                    
+                    {/* Top Hazard Strip */}
+                    <div className="w-full h-12 bg-atalaia-neon flex items-center justify-center relative overflow-hidden shrink-0 border-b-4 border-black">
+                          <div className="absolute inset-0 opacity-30" style={{ backgroundImage: 'repeating-linear-gradient(-45deg, #000 0, #000 10px, transparent 10px, transparent 20px)' }} />
+                          <div className="relative z-10 flex items-center gap-2 font-black text-xl tracking-[0.2em] uppercase text-black">
+                              A T A L A I A
+                          </div>
+                    </div>
 
-                  {/* FRASE DE MONITORAMENTO */}
-                  <div className="relative z-10 bg-atalaia-neon/10 w-[120%] py-1.5 transform -skew-x-12 border-y border-atalaia-neon/30 mb-2">
-                      <p className="text-atalaia-neon font-black text-[11px] text-center uppercase tracking-[0.15em] transform skew-x-12 px-6">
-                          ÁREA MONITORADA POR MORADORES
-                      </p>
-                  </div>
+                    {/* Content Body */}
+                    <div className="flex-1 w-full flex flex-col items-center justify-between p-6 relative">
+                          
+                          {/* Corner Brackets (HUD Style) */}
+                          <div className="absolute top-4 left-4 w-8 h-8 border-t-4 border-l-4 border-atalaia-neon" />
+                          <div className="absolute top-4 right-4 w-8 h-8 border-t-4 border-r-4 border-atalaia-neon" />
+                          <div className="absolute bottom-4 left-4 w-8 h-8 border-b-4 border-l-4 border-atalaia-neon" />
+                          <div className="absolute bottom-4 right-4 w-8 h-8 border-b-4 border-r-4 border-atalaia-neon" />
 
-                  {/* Central Icon */}
-                  <div className="relative z-10 my-2">
-                      <div className="w-24 h-24 border-4 border-atalaia-neon rounded-full flex items-center justify-center bg-black/50 backdrop-blur shadow-[0_0_30px_rgba(0,255,102,0.4)] print:bg-black print:shadow-none">
-                          <ShieldCheck size={48} className="text-atalaia-neon" />
-                      </div>
-                  </div>
+                          <div className="text-center mt-4 px-2">
+                              <h3 className="text-atalaia-neon text-xs font-bold tracking-[0.4em] mb-1 uppercase">SISTEMA DE</h3>
+                              <h1 className="text-white font-black text-4xl leading-none tracking-tighter drop-shadow-lg scale-y-110">
+                                  SEGURANÇA
+                              </h1>
+                              <h1 className="text-atalaia-neon font-black text-3xl leading-none tracking-tight drop-shadow-[0_0_15px_rgba(0,255,102,0.8)] mt-1 scale-x-110">
+                                  COLABORATIVA
+                              </h1>
+                          </div>
 
-                  {/* Bottom Info with QR */}
-                  <div className="w-full text-center relative z-10 flex flex-col items-center justify-end flex-1">
-                      <h4 className="text-white font-bold text-2xl tracking-[0.3em] mb-3">ATALAIA</h4>
-                      
-                      <div className="bg-white p-2 rounded-lg shadow-[0_0_15px_rgba(255,255,255,0.2)] mb-1">
-                          <img 
-                            src="https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=https://atalaia.cloud" 
-                            alt="QR Code" 
-                            className="w-16 h-16"
-                          />
-                      </div>
-                      <p className="text-[9px] text-gray-500 uppercase tracking-wider font-bold mt-1">Acesse para Monitorar</p>
-                  </div>
+                          {/* Central Icon */}
+                          <div className="relative my-4">
+                              <div className="w-32 h-32 rounded-full border border-atalaia-neon/30 flex items-center justify-center relative">
+                                  {/* Spin Ring (Static for print) */}
+                                  <div className="absolute inset-0 border-t-2 border-atalaia-neon rounded-full" />
+                                  
+                                  {/* Inner Circle */}
+                                  <div className="w-24 h-24 bg-gray-900 rounded-full border-2 border-atalaia-neon flex items-center justify-center shadow-[0_0_30px_rgba(0,255,102,0.3)] z-10">
+                                      <Video size={48} className="text-white" />
+                                  </div>
+                                  
+                                  {/* REC DOT (Static for print) */}
+                                  <div className="absolute top-0 right-0 w-4 h-4 bg-red-600 rounded-full border-2 border-black z-20" />
+                              </div>
+                              <p className="text-[10px] text-atalaia-neon text-center mt-2 font-mono">REC ● 24H</p>
+                          </div>
 
-                  {/* Decorative Elements */}
-                  <div className="absolute top-3 left-3 w-2 h-2 bg-atalaia-neon rounded-full" />
-                  <div className="absolute top-3 right-3 w-2 h-2 bg-atalaia-neon rounded-full" />
-                  <div className="absolute bottom-3 left-3 w-2 h-2 bg-atalaia-neon rounded-full" />
-                  <div className="absolute bottom-3 right-3 w-2 h-2 bg-atalaia-neon rounded-full" />
+                          <div className="w-full bg-white border-2 border-atalaia-neon p-2 flex items-center gap-3 rounded-lg shadow-lg relative z-10">
+                              <div className="bg-black p-1 shrink-0">
+                                    <img 
+                                        src="https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=https://atalaia.cloud" 
+                                        alt="QR" 
+                                        className="w-14 h-14"
+                                    />
+                              </div>
+                              <div className="text-left flex-1">
+                                  <p className="text-black text-[10px] font-bold uppercase tracking-wider mb-0.5">Vizinhança Conectada</p>
+                                  <p className="text-black text-xs leading-tight font-medium">
+                                      Imagens gravadas e monitoradas pelos moradores.
+                                  </p>
+                              </div>
+                          </div>
+                    </div>
+
+                    {/* Bottom Strip */}
+                    <div className="w-full h-4 bg-yellow-500 shrink-0 border-t-4 border-black relative overflow-hidden">
+                         <div className="absolute inset-0 opacity-50" style={{ backgroundImage: 'repeating-linear-gradient(45deg, #000 0, #000 10px, transparent 10px, transparent 20px)' }} />
+                    </div>
+                  </div>
               </div>
 
               <div className="mt-8 w-full flex gap-4 max-w-md print:hidden">
-                  <Button variant="outline" onClick={() => setPlateModalOpen(false)} className="flex-1">
+                  <Button variant="outline" onClick={() => setPlateModalOpen(false)} className="flex-1 border-white/20 text-white hover:bg-white/10">
                       Fechar
                   </Button>
-                  <Button onClick={handlePrintPlate} className="flex-1">
-                      <Printer size={18} className="mr-2" /> Imprimir
+                  <Button onClick={handlePrintPlate} className="flex-1 bg-atalaia-neon text-black font-bold hover:bg-[#00cc52]">
+                      <Printer size={18} className="mr-2" /> Imprimir Placa
                   </Button>
               </div>
           </div>
